@@ -1,0 +1,945 @@
+[
+  {
+    "id": "chat-l5r02mqcw",
+    "caseId": "PM-HK-20260727-219633",
+    "userName": "Website Visitor",
+    "userEmail": "",
+    "phone": "",
+    "status": "resolved",
+    "language": "en",
+    "createdAt": "2026-07-27T20:16:04.300Z",
+    "attachmentsAllowed": true,
+    "voiceNotesAllowed": true,
+    "selectedTopic": "",
+    "aiState": "welcome",
+    "timelineProgress": 6,
+    "lastSeenAt": "2026-07-27T20:16:04.300Z",
+    "customerOnline": false,
+    "connectionStatus": "Disconnected",
+    "paymentConfig": {
+      "enabled": false,
+      "amount": 250,
+      "currency": "HKD",
+      "status": "Awaiting Transfer",
+      "reference": "",
+      "deadline": "",
+      "notes": ""
+    },
+    "caseStatusConfig": {
+      "visible": false,
+      "title": "Case Status",
+      "subtitle": "Completed",
+      "requiredActionsTitle": "REQUIRED ACTIONS",
+      "progressSteps": [
+        {
+          "id": 1,
+          "name": "Received",
+          "status": "Reviewing",
+          "visible": true
+        },
+        {
+          "id": 2,
+          "name": "Under Review",
+          "status": "Pending",
+          "visible": true
+        },
+        {
+          "id": 3,
+          "name": "Refund Verification",
+          "status": "Pending",
+          "visible": true
+        },
+        {
+          "id": 4,
+          "name": "Completed",
+          "status": "Pending",
+          "visible": true
+        }
+      ]
+    },
+    "instructions": [],
+    "actionsRequiredEnabled": false,
+    "isLocked": false,
+    "uploadsMuted": false,
+    "agentTyping": false,
+    "customerTyping": false,
+    "transactions": [],
+    "collectedInfo": {},
+    "messages": [
+      {
+        "id": "sys-1785443960965",
+        "sender": "system",
+        "text": "Mei Ling Tse (Support Specialist) is now connected.",
+        "timestamp": "2026-07-30T20:39:20.965Z"
+      },
+      {
+        "id": "agent-init-1785443960965",
+        "sender": "agent",
+        "text": "Hello, this is Mei Ling Tse. I have accepted your Case PM-HK-20260727-219633 and am currently reviewing your details. I'll assist you step-by-step to get this resolved.",
+        "timestamp": "2026-07-30T20:39:20.965Z",
+        "agentName": "Mei Ling Tse"
+      },
+      {
+        "id": "sys-resolve-1785588050007",
+        "sender": "system",
+        "text": "This conversation has been marked as resolved and closed. Thank you for choosing PayMe Business LLC support.",
+        "timestamp": "2026-08-01T12:40:50.007Z"
+      }
+    ],
+    "visitorInfo": {
+      "ip": "127.0.0.1",
+      "country": "Hong Kong",
+      "region": "Hong Kong Island",
+      "city": "Central",
+      "timezone": "Asia/Hong_Kong",
+      "isp": "HSBC Network Gateway",
+      "browser": "Safari 26.4",
+      "os": "macOS",
+      "deviceType": "Mobile",
+      "platform": "iOS Device",
+      "language": "en-US",
+      "screenResolution": "390x844",
+      "localTime": "4:16:03 AM (Asia/Hong_Kong)",
+      "firstVisit": "2026-07-27T20:16:03.921Z",
+      "lastVisit": "2026-07-27T20:16:04.301Z",
+      "totalVisits": 1,
+      "currentPage": "https://ais-dev-rq4sbimhortd5bzqhls2e7-578764806170.europe-west2.run.app/support?chat=true",
+      "referrer": "https://ais-dev-rq4sbimhortd5bzqhls2e7-578764806170.europe-west2.run.app/",
+      "vpnDetected": false,
+      "proxyDetected": false,
+      "torExitNode": false,
+      "hostingProvider": false,
+      "asn": "AS9304 HSBC",
+      "riskScore": "0 / 100 (Low Risk)"
+    }
+  },
+  {
+    "id": "chat-hum4aanfg",
+    "caseId": "PM-HK-20260727-212364",
+    "userName": "Website Visitor",
+    "userEmail": "",
+    "phone": "",
+    "status": "active",
+    "language": "en",
+    "createdAt": "2026-07-27T20:16:04.329Z",
+    "attachmentsAllowed": true,
+    "voiceNotesAllowed": true,
+    "selectedTopic": "Payment Issues",
+    "aiState": "welcome",
+    "timelineProgress": 2,
+    "lastSeenAt": "2026-07-27T21:21:17.329Z",
+    "customerOnline": false,
+    "connectionStatus": "Disconnected",
+    "paymentConfig": {
+      "enabled": false,
+      "amount": 250,
+      "currency": "HKD",
+      "status": "Awaiting Transfer",
+      "reference": "",
+      "deadline": "",
+      "notes": ""
+    },
+    "caseStatusConfig": {
+      "visible": false,
+      "title": "Case Status",
+      "subtitle": "Received",
+      "requiredActionsTitle": "REQUIRED ACTIONS",
+      "progressSteps": [
+        {
+          "id": 1,
+          "name": "Received",
+          "status": "Reviewing",
+          "visible": true
+        },
+        {
+          "id": 2,
+          "name": "Under Review",
+          "status": "Pending",
+          "visible": true
+        },
+        {
+          "id": 3,
+          "name": "Refund Verification",
+          "status": "Pending",
+          "visible": true
+        },
+        {
+          "id": 4,
+          "name": "Completed",
+          "status": "Pending",
+          "visible": true
+        }
+      ]
+    },
+    "instructions": [],
+    "actionsRequiredEnabled": false,
+    "isLocked": false,
+    "uploadsMuted": false,
+    "agentTyping": false,
+    "customerTyping": false,
+    "transactions": [],
+    "collectedInfo": {},
+    "messages": [
+      {
+        "id": "sys-1785453181486",
+        "sender": "system",
+        "text": "Mei Ling Tse (Support Specialist) is now connected.",
+        "timestamp": "2026-07-30T23:13:01.486Z"
+      },
+      {
+        "id": "agent-init-1785453181486",
+        "sender": "agent",
+        "text": "Hello, this is Mei Ling Tse. I have accepted your Case PM-HK-20260727-212364 and am currently reviewing your details. I'll assist you step-by-step to get this resolved.",
+        "timestamp": "2026-07-30T23:13:01.486Z",
+        "agentName": "Mei Ling Tse"
+      }
+    ],
+    "visitorInfo": {
+      "ip": "102.89.22.46",
+      "country": "Nigeria",
+      "region": "Lagos",
+      "city": "Lagos",
+      "timezone": "Asia/Hong_Kong",
+      "isp": "Mtn Nigeria Communication Limited",
+      "browser": "Safari 26.4",
+      "os": "macOS",
+      "deviceType": "Mobile",
+      "platform": "iOS Device",
+      "language": "en-US",
+      "screenResolution": "390x844",
+      "localTime": "5:21:16 AM (Asia/Hong_Kong)",
+      "firstVisit": "2026-07-27T20:16:03.921Z",
+      "lastVisit": "2026-07-27T21:21:17.329Z",
+      "totalVisits": 1,
+      "currentPage": "https://ais-dev-rq4sbimhortd5bzqhls2e7-578764806170.europe-west2.run.app/support?chat=true",
+      "referrer": "https://aistudio.google.com/",
+      "vpnDetected": false,
+      "proxyDetected": false,
+      "torExitNode": false,
+      "hostingProvider": false,
+      "asn": "AS9304 HSBC",
+      "riskScore": "0 / 100 (Low Risk)"
+    },
+    "topicSelectedAt": "2026-07-27T20:18:28.310Z",
+    "agentId": "mei-ling-tse"
+  },
+  {
+    "id": "chat-ut0lofdo4",
+    "caseId": "PM-HK-20260801-481185",
+    "userName": "Website Visitor",
+    "userEmail": "",
+    "phone": "",
+    "status": "bot",
+    "language": "en",
+    "createdAt": "2026-08-01T00:28:05.082Z",
+    "attachmentsAllowed": true,
+    "voiceNotesAllowed": true,
+    "selectedTopic": "",
+    "aiState": "welcome",
+    "timelineProgress": 1,
+    "lastSeenAt": "2026-08-01T00:28:05.082Z",
+    "customerOnline": false,
+    "connectionStatus": "Disconnected",
+    "paymentConfig": {
+      "enabled": false,
+      "amount": 250,
+      "currency": "HKD",
+      "status": "Awaiting Transfer",
+      "reference": "",
+      "deadline": "",
+      "notes": ""
+    },
+    "caseStatusConfig": {
+      "visible": false,
+      "title": "Case Status",
+      "subtitle": "Received",
+      "requiredActionsTitle": "REQUIRED ACTIONS",
+      "progressSteps": [
+        {
+          "id": 1,
+          "name": "Received",
+          "status": "Reviewing",
+          "visible": true
+        },
+        {
+          "id": 2,
+          "name": "Under Review",
+          "status": "Pending",
+          "visible": true
+        },
+        {
+          "id": 3,
+          "name": "Refund Verification",
+          "status": "Pending",
+          "visible": true
+        },
+        {
+          "id": 4,
+          "name": "Completed",
+          "status": "Pending",
+          "visible": true
+        }
+      ]
+    },
+    "instructions": [],
+    "actionsRequiredEnabled": false,
+    "isLocked": false,
+    "uploadsMuted": false,
+    "agentTyping": false,
+    "customerTyping": false,
+    "transactions": [],
+    "collectedInfo": {},
+    "messages": [],
+    "visitorInfo": {
+      "ip": "127.0.0.1",
+      "country": "Hong Kong",
+      "region": "Hong Kong Island",
+      "city": "Central",
+      "timezone": "Asia/Hong_Kong",
+      "isp": "HSBC Network Gateway",
+      "browser": "Safari 26.4",
+      "os": "macOS",
+      "deviceType": "Mobile",
+      "platform": "iOS Device",
+      "language": "en-US",
+      "screenResolution": "390x844",
+      "localTime": "8:28:02 AM (Asia/Hong_Kong)",
+      "firstVisit": "2026-08-01T00:28:02.429Z",
+      "lastVisit": "2026-08-01T00:28:05.082Z",
+      "totalVisits": 1,
+      "currentPage": "https://ais-dev-rq4sbimhortd5bzqhls2e7-578764806170.europe-west2.run.app/support?chat=true",
+      "referrer": "https://aistudio.google.com/",
+      "vpnDetected": false,
+      "proxyDetected": false,
+      "torExitNode": false,
+      "hostingProvider": false,
+      "asn": "AS9304 HSBC",
+      "riskScore": "0 / 100 (Low Risk)"
+    }
+  },
+  {
+    "id": "chat-i04htqbl7",
+    "caseId": "PM-HK-20260801-351339",
+    "userName": "Website Visitor",
+    "userEmail": "",
+    "phone": "",
+    "status": "bot",
+    "language": "en",
+    "createdAt": "2026-08-01T00:28:05.092Z",
+    "attachmentsAllowed": true,
+    "voiceNotesAllowed": true,
+    "selectedTopic": "",
+    "aiState": "welcome",
+    "timelineProgress": 1,
+    "lastSeenAt": "2026-08-01T00:28:08.626Z",
+    "customerOnline": false,
+    "connectionStatus": "Disconnected",
+    "paymentConfig": {
+      "enabled": false,
+      "amount": 250,
+      "currency": "HKD",
+      "status": "Awaiting Transfer",
+      "reference": "",
+      "deadline": "",
+      "notes": ""
+    },
+    "caseStatusConfig": {
+      "visible": false,
+      "title": "Case Status",
+      "subtitle": "Received",
+      "requiredActionsTitle": "REQUIRED ACTIONS",
+      "progressSteps": [
+        {
+          "id": 1,
+          "name": "Received",
+          "status": "Reviewing",
+          "visible": true
+        },
+        {
+          "id": 2,
+          "name": "Under Review",
+          "status": "Pending",
+          "visible": true
+        },
+        {
+          "id": 3,
+          "name": "Refund Verification",
+          "status": "Pending",
+          "visible": true
+        },
+        {
+          "id": 4,
+          "name": "Completed",
+          "status": "Pending",
+          "visible": true
+        }
+      ]
+    },
+    "instructions": [],
+    "actionsRequiredEnabled": false,
+    "isLocked": false,
+    "uploadsMuted": false,
+    "agentTyping": false,
+    "customerTyping": false,
+    "transactions": [],
+    "collectedInfo": {},
+    "messages": [],
+    "visitorInfo": {
+      "ip": "127.0.0.1",
+      "country": "Hong Kong",
+      "region": "Hong Kong Island",
+      "city": "Central",
+      "timezone": "Asia/Hong_Kong",
+      "isp": "HSBC Network Gateway",
+      "browser": "Safari 26.4",
+      "os": "macOS",
+      "deviceType": "Mobile",
+      "platform": "iOS Device",
+      "language": "en-US",
+      "screenResolution": "390x844",
+      "localTime": "8:28:08 AM (Asia/Hong_Kong)",
+      "firstVisit": "2026-08-01T00:28:02.429Z",
+      "lastVisit": "2026-08-01T00:28:08.626Z",
+      "totalVisits": 1,
+      "currentPage": "https://ais-dev-rq4sbimhortd5bzqhls2e7-578764806170.europe-west2.run.app/support?chat=true",
+      "referrer": "https://aistudio.google.com/",
+      "vpnDetected": false,
+      "proxyDetected": false,
+      "torExitNode": false,
+      "hostingProvider": false,
+      "asn": "AS9304 HSBC",
+      "riskScore": "0 / 100 (Low Risk)"
+    }
+  },
+  {
+    "id": "chat-66kibkc04",
+    "caseId": "PM-HK-20260801-663186",
+    "userName": "feperze@gmail.com",
+    "userEmail": "feperze@gmail.com",
+    "phone": "",
+    "status": "active",
+    "language": "en",
+    "createdAt": "2026-08-01T00:56:27.604Z",
+    "attachmentsAllowed": true,
+    "voiceNotesAllowed": true,
+    "selectedTopic": "Transfer Issues",
+    "aiState": "welcome",
+    "timelineProgress": 2,
+    "lastSeenAt": "2026-08-01T01:37:52.832Z",
+    "customerOnline": false,
+    "connectionStatus": "Disconnected",
+    "paymentConfig": {
+      "enabled": false,
+      "amount": 250,
+      "currency": "HKD",
+      "status": "Awaiting Transfer",
+      "reference": "",
+      "deadline": "",
+      "notes": ""
+    },
+    "caseStatusConfig": {
+      "visible": true,
+      "title": "Case Status",
+      "subtitle": "Under Review",
+      "requiredActionsTitle": "REQUIRED ACTIONS",
+      "progressSteps": [
+        {
+          "id": 1,
+          "name": "Received",
+          "status": "Success",
+          "visible": true,
+          "timestamp": "8:27 AM",
+          "date": "1 Aug"
+        },
+        {
+          "id": 2,
+          "name": "Under Review",
+          "status": "Reviewing",
+          "visible": true
+        },
+        {
+          "id": 3,
+          "name": "Refund Verification",
+          "status": "Pending",
+          "visible": true
+        },
+        {
+          "id": 4,
+          "name": "Completed",
+          "status": "Pending",
+          "visible": true
+        }
+      ]
+    },
+    "instructions": [],
+    "actionsRequiredEnabled": false,
+    "isLocked": false,
+    "uploadsMuted": false,
+    "agentTyping": false,
+    "customerTyping": false,
+    "transactions": [],
+    "collectedInfo": {},
+    "messages": [
+      {
+        "id": "msg-1785545825917-yxu",
+        "sender": "bot",
+        "text": "Welcome to PayMe by HSBC Help Center. I am your AI Support Assistant. Before I transfer you to a specialist, let's gather a few brief details. May I have your email address?",
+        "timestamp": "2026-08-01T00:57:05.917Z",
+        "agentName": "",
+        "status": "seen",
+        "translationEn": "Welcome to PayMe by HSBC Help Center. I am your AI Support Assistant. Before I transfer you to a specialist, let's gather a few brief details. May I have your email address?",
+        "translationHk": "歡迎使用 PayMe by HSBC 支援中心。我是您的 AI 支援助理。在為您轉接至專員前，請先提供您的電郵地址。"
+      },
+      {
+        "id": "msg-1785545828081-q0b",
+        "sender": "customer",
+        "text": "Feperze@gmail.com",
+        "timestamp": "2026-08-01T00:57:08.081Z",
+        "agentName": "",
+        "status": "seen",
+        "translationEn": "Feperze@gmail.com",
+        "translationHk": "Feperze@gmail.com"
+      },
+      {
+        "id": "msg-1785545834894-0wg",
+        "sender": "bot",
+        "text": "Your request has been received. We are connecting you with an available support human specialist.",
+        "timestamp": "2026-08-01T00:57:14.894Z",
+        "agentName": "",
+        "status": "seen",
+        "translationEn": "Your request has been received. We are connecting you with an available support human specialist.",
+        "translationHk": "我們已收到您的請求。現正為您轉接至支援專員。"
+      },
+      {
+        "id": "msg-1785545858226-ire",
+        "sender": "customer",
+        "text": "Thank you",
+        "timestamp": "2026-08-01T00:57:38.226Z",
+        "agentName": "",
+        "status": "seen",
+        "translationEn": "Thank you",
+        "translationHk": "多謝"
+      },
+      {
+        "id": "msg-1785545863657-ii2",
+        "sender": "customer",
+        "text": "I’m waiting",
+        "timestamp": "2026-08-01T00:57:43.657Z",
+        "agentName": "",
+        "status": "seen",
+        "translationEn": "I’m waiting",
+        "translationHk": "我正在等候。"
+      },
+      {
+        "id": "sys-1785545871841",
+        "sender": "system",
+        "text": "Carmen Lee (Support Specialist) is now connected.",
+        "timestamp": "2026-08-01T00:57:51.841Z"
+      },
+      {
+        "id": "agent-init-1785545871841",
+        "sender": "agent",
+        "text": "Hello, this is Carmen Lee. I have accepted your Case PM-HK-20260801-663186 and am currently reviewing your details. I'll assist you step-by-step to get this resolved.",
+        "timestamp": "2026-08-01T00:57:51.841Z",
+        "agentName": "Carmen Lee",
+        "status": "seen"
+      },
+      {
+        "id": "msg-1785545937569-g9c",
+        "sender": "agent",
+        "text": "How may I assist you with your transaction today?",
+        "timestamp": "2026-08-01T00:58:57.569Z",
+        "agentName": "Carmen Lee",
+        "status": "seen",
+        "translationEn": "How may I assist you with your transaction today?",
+        "translationHk": "請問今日有咩可以幫到你處理交易？"
+      },
+      {
+        "id": "msg-1785546068603-sw8",
+        "sender": "customer",
+        "text": "someome sent me money today but the money didn’t show in my payme account, so I received email saying I received the money but is under review that I should contact live chat, that’s why I’m contacting you guys now.",
+        "timestamp": "2026-08-01T01:01:08.603Z",
+        "agentName": "",
+        "status": "seen",
+        "translationEn": "someome sent me money today but the money didn’t show in my payme account, so I received email saying I received the money but is under review that I should contact live chat, that’s why I’m contacting you guys now.",
+        "translationHk": "今日有人轉咗錢畀我，但係我嘅 PayMe 戶口未見到有錢入賬。我收到電郵話收到款項，但目前正進行審核，並建議我聯絡線上客戶服務，所以依家搵你哋幫手處理。"
+      },
+      {
+        "id": "msg-1785546130632-vk7",
+        "sender": "agent",
+        "text": "Thank you for providing those details. I understand you have received a notification that your payment is currently under review. I am now looking into the status of this transaction for you. Could you please provide the transaction reference number or the amount mentioned in the email so I can locate your specific case in our system?",
+        "timestamp": "2026-08-01T01:02:10.632Z",
+        "agentName": "Carmen Lee",
+        "status": "seen",
+        "translationEn": "Thank you for providing those details. I understand you have received a notification that your payment is currently under review. I am now looking into the status of this transaction for you. Could you please provide the transaction reference number or the amount mentioned in the email so I can locate your specific case in our system?",
+        "translationHk": "感謝您提供相關詳情。我明白您收到通知，指您的付款目前正在審核中。我現正為您查閱該交易的狀態。為方便我在系統中定位您的個案，請提供電郵中提及的交易參考編號或金額，謝謝。"
+      },
+      {
+        "id": "msg-1785546143216-j9q",
+        "sender": "customer",
+        "text": "Ok please wait",
+        "timestamp": "2026-08-01T01:02:23.216Z",
+        "agentName": "",
+        "status": "seen",
+        "translationEn": "Ok please wait",
+        "translationHk": "好的，請稍候。"
+      },
+      {
+        "id": "msg-1785546174750-oz2",
+        "sender": "customer",
+        "text": "Here is my reference number FP69526825",
+        "timestamp": "2026-08-01T01:02:54.750Z",
+        "agentName": "",
+        "status": "seen",
+        "translationEn": "Here is my reference number FP69526825",
+        "translationHk": "這是我的參考編號 FP69526825"
+      },
+      {
+        "id": "msg-1785546224059-2bl",
+        "sender": "customer",
+        "text": "Sorry I mean the reference number FP69526825",
+        "timestamp": "2026-08-01T01:03:44.059Z",
+        "agentName": "",
+        "status": "seen",
+        "translationEn": "Sorry I mean the reference number FP69526825",
+        "translationHk": "抱歉，我指的參考編號是 FP69526825"
+      },
+      {
+        "id": "msg-1785546258318-ap3",
+        "sender": "agent",
+        "text": "Thank you for providing the reference number FP69526825. I have located your case. As the transaction is currently under review, I am now checking the status for you. Please bear with me for a moment while I review the details of this transaction.",
+        "timestamp": "2026-08-01T01:04:18.318Z",
+        "agentName": "Carmen Lee",
+        "status": "seen",
+        "translationEn": "Thank you for providing the reference number FP69526825. I have located your case. As the transaction is currently under review, I am now checking the status for you. Please bear with me for a moment while I review the details of this transaction.",
+        "translationHk": "感謝閣下提供參考編號 FP69526825，我已成功找到您的個案。由於該交易目前正處於審核階段，我現正為您查詢處理進度。請稍候片刻，讓我為您核對該交易的詳情。"
+      },
+      {
+        "id": "msg-1785546273794-28t",
+        "sender": "customer",
+        "text": "Ok thank you, I’m waiting",
+        "timestamp": "2026-08-01T01:04:33.794Z",
+        "agentName": "",
+        "status": "seen",
+        "translationEn": "Ok thank you, I’m waiting",
+        "translationHk": "好的，唔該，我等緊。"
+      },
+      {
+        "id": "sys-prog-1785546422945",
+        "sender": "system",
+        "text": "System: Case progress step \"Received\" confirmed. Status updated to Success (8:27 AM).",
+        "timestamp": "2026-08-01T01:07:02.945Z"
+      }
+    ],
+    "visitorInfo": {
+      "ip": "102.88.111.216",
+      "country": "Nigeria",
+      "region": "Lagos",
+      "city": "Lagos",
+      "timezone": "Asia/Hong_Kong",
+      "isp": "Mtn Nigeria Communication Limited",
+      "browser": "Safari 26.4",
+      "os": "macOS",
+      "deviceType": "Mobile",
+      "platform": "iOS Device",
+      "language": "en-US",
+      "screenResolution": "390x844",
+      "localTime": "9:37:52 AM (Asia/Hong_Kong)",
+      "firstVisit": "2026-08-01T00:56:27.168Z",
+      "lastVisit": "2026-08-01T01:37:52.832Z",
+      "totalVisits": 1,
+      "currentPage": "https://ais-dev-rq4sbimhortd5bzqhls2e7-578764806170.europe-west2.run.app/support?chat=true",
+      "referrer": "https://aistudio.google.com/",
+      "vpnDetected": false,
+      "proxyDetected": false,
+      "torExitNode": false,
+      "hostingProvider": false,
+      "asn": "AS9304 HSBC",
+      "riskScore": "0 / 100 (Low Risk)"
+    },
+    "topicSelectedAt": "2026-08-01T00:57:14.738Z",
+    "agentId": "carmen-lee"
+  },
+  {
+    "id": "chat-ilzmyeaif",
+    "caseId": "PM-HK-20260801-775552",
+    "userName": "Website Visitor",
+    "userEmail": "",
+    "phone": "",
+    "status": "bot",
+    "language": "en",
+    "createdAt": "2026-08-01T00:56:27.605Z",
+    "attachmentsAllowed": true,
+    "voiceNotesAllowed": true,
+    "selectedTopic": "",
+    "aiState": "welcome",
+    "timelineProgress": 1,
+    "lastSeenAt": "2026-08-01T00:56:27.605Z",
+    "customerOnline": false,
+    "connectionStatus": "Disconnected",
+    "paymentConfig": {
+      "enabled": false,
+      "amount": 250,
+      "currency": "HKD",
+      "status": "Awaiting Transfer",
+      "reference": "",
+      "deadline": "",
+      "notes": ""
+    },
+    "caseStatusConfig": {
+      "visible": false,
+      "title": "Case Status",
+      "subtitle": "Received",
+      "requiredActionsTitle": "REQUIRED ACTIONS",
+      "progressSteps": [
+        {
+          "id": 1,
+          "name": "Received",
+          "status": "Reviewing",
+          "visible": true
+        },
+        {
+          "id": 2,
+          "name": "Under Review",
+          "status": "Pending",
+          "visible": true
+        },
+        {
+          "id": 3,
+          "name": "Refund Verification",
+          "status": "Pending",
+          "visible": true
+        },
+        {
+          "id": 4,
+          "name": "Completed",
+          "status": "Pending",
+          "visible": true
+        }
+      ]
+    },
+    "instructions": [],
+    "actionsRequiredEnabled": false,
+    "isLocked": false,
+    "uploadsMuted": false,
+    "agentTyping": false,
+    "customerTyping": false,
+    "transactions": [],
+    "collectedInfo": {},
+    "messages": [],
+    "visitorInfo": {
+      "ip": "127.0.0.1",
+      "country": "Hong Kong",
+      "region": "Hong Kong Island",
+      "city": "Central",
+      "timezone": "Asia/Hong_Kong",
+      "isp": "HSBC Network Gateway",
+      "browser": "Safari 26.4",
+      "os": "macOS",
+      "deviceType": "Mobile",
+      "platform": "iOS Device",
+      "language": "en-US",
+      "screenResolution": "390x844",
+      "localTime": "8:56:27 AM (Asia/Hong_Kong)",
+      "firstVisit": "2026-08-01T00:56:27.168Z",
+      "lastVisit": "2026-08-01T00:56:27.605Z",
+      "totalVisits": 1,
+      "currentPage": "https://ais-dev-rq4sbimhortd5bzqhls2e7-578764806170.europe-west2.run.app/support?__storage_access_granted=1&chat=true",
+      "referrer": "https://ais-dev-rq4sbimhortd5bzqhls2e7-578764806170.europe-west2.run.app/",
+      "vpnDetected": false,
+      "proxyDetected": false,
+      "torExitNode": false,
+      "hostingProvider": false,
+      "asn": "AS9304 HSBC",
+      "riskScore": "0 / 100 (Low Risk)"
+    }
+  },
+  {
+    "id": "chat-cigt47tkt",
+    "caseId": "PM-HK-20260801-744990",
+    "userName": "Website Visitor",
+    "userEmail": "",
+    "phone": "",
+    "status": "bot",
+    "language": "en",
+    "createdAt": "2026-08-01T12:40:17.676Z",
+    "attachmentsAllowed": true,
+    "voiceNotesAllowed": true,
+    "selectedTopic": "",
+    "aiState": "welcome",
+    "timelineProgress": 1,
+    "lastSeenAt": "2026-08-01T12:40:17.676Z",
+    "customerOnline": false,
+    "connectionStatus": "Disconnected",
+    "paymentConfig": {
+      "enabled": false,
+      "amount": 250,
+      "currency": "HKD",
+      "status": "Awaiting Transfer",
+      "reference": "",
+      "deadline": "",
+      "notes": ""
+    },
+    "caseStatusConfig": {
+      "visible": false,
+      "title": "Case Status",
+      "subtitle": "Received",
+      "requiredActionsTitle": "REQUIRED ACTIONS",
+      "progressSteps": [
+        {
+          "id": 1,
+          "name": "Received",
+          "status": "Reviewing",
+          "visible": true
+        },
+        {
+          "id": 2,
+          "name": "Under Review",
+          "status": "Pending",
+          "visible": true
+        },
+        {
+          "id": 3,
+          "name": "Refund Verification",
+          "status": "Pending",
+          "visible": true
+        },
+        {
+          "id": 4,
+          "name": "Completed",
+          "status": "Pending",
+          "visible": true
+        }
+      ]
+    },
+    "instructions": [],
+    "actionsRequiredEnabled": false,
+    "isLocked": false,
+    "uploadsMuted": false,
+    "agentTyping": false,
+    "customerTyping": false,
+    "transactions": [],
+    "collectedInfo": {},
+    "messages": [],
+    "visitorInfo": {
+      "ip": "127.0.0.1",
+      "country": "Hong Kong",
+      "region": "Hong Kong Island",
+      "city": "Central",
+      "timezone": "Asia/Hong_Kong",
+      "isp": "HSBC Network Gateway",
+      "browser": "Safari 26.4",
+      "os": "macOS",
+      "deviceType": "Mobile",
+      "platform": "iOS Device",
+      "language": "en-US",
+      "screenResolution": "390x844",
+      "localTime": "8:40:17 PM (Asia/Hong_Kong)",
+      "firstVisit": "2026-08-01T12:40:17.043Z",
+      "lastVisit": "2026-08-01T12:40:17.676Z",
+      "totalVisits": 1,
+      "currentPage": "https://ais-dev-rq4sbimhortd5bzqhls2e7-578764806170.europe-west2.run.app/support?chat=true",
+      "referrer": "https://aistudio.google.com/",
+      "vpnDetected": false,
+      "proxyDetected": false,
+      "torExitNode": false,
+      "hostingProvider": false,
+      "asn": "AS9304 HSBC",
+      "riskScore": "0 / 100 (Low Risk)"
+    }
+  },
+  {
+    "id": "chat-p6r9wlsy4",
+    "caseId": "PM-HK-20260801-568832",
+    "userName": "Website Visitor",
+    "userEmail": "",
+    "phone": "",
+    "status": "bot",
+    "language": "en",
+    "createdAt": "2026-08-01T12:40:17.681Z",
+    "attachmentsAllowed": true,
+    "voiceNotesAllowed": true,
+    "selectedTopic": "",
+    "aiState": "welcome",
+    "timelineProgress": 1,
+    "lastSeenAt": "2026-08-01T12:40:20.926Z",
+    "customerOnline": false,
+    "connectionStatus": "Disconnected",
+    "paymentConfig": {
+      "enabled": false,
+      "amount": 250,
+      "currency": "HKD",
+      "status": "Awaiting Transfer",
+      "reference": "",
+      "deadline": "",
+      "notes": ""
+    },
+    "caseStatusConfig": {
+      "visible": false,
+      "title": "Case Status",
+      "subtitle": "Received",
+      "requiredActionsTitle": "REQUIRED ACTIONS",
+      "progressSteps": [
+        {
+          "id": 1,
+          "name": "Received",
+          "status": "Reviewing",
+          "visible": true
+        },
+        {
+          "id": 2,
+          "name": "Under Review",
+          "status": "Pending",
+          "visible": true
+        },
+        {
+          "id": 3,
+          "name": "Refund Verification",
+          "status": "Pending",
+          "visible": true
+        },
+        {
+          "id": 4,
+          "name": "Completed",
+          "status": "Pending",
+          "visible": true
+        }
+      ]
+    },
+    "instructions": [],
+    "actionsRequiredEnabled": false,
+    "isLocked": false,
+    "uploadsMuted": false,
+    "agentTyping": false,
+    "customerTyping": false,
+    "transactions": [],
+    "collectedInfo": {},
+    "messages": [],
+    "visitorInfo": {
+      "ip": "102.89.83.216",
+      "country": "Nigeria",
+      "region": "Oyo",
+      "city": "Ibadan",
+      "timezone": "Asia/Hong_Kong",
+      "isp": "Mtn Nigeria Communication Limited",
+      "browser": "Safari 26.4",
+      "os": "macOS",
+      "deviceType": "Mobile",
+      "platform": "iOS Device",
+      "language": "en-US",
+      "screenResolution": "390x844",
+      "localTime": "8:40:20 PM (Asia/Hong_Kong)",
+      "firstVisit": "2026-08-01T12:40:17.043Z",
+      "lastVisit": "2026-08-01T12:40:20.926Z",
+      "totalVisits": 1,
+      "currentPage": "https://ais-dev-rq4sbimhortd5bzqhls2e7-578764806170.europe-west2.run.app/support?chat=true",
+      "referrer": "https://aistudio.google.com/",
+      "vpnDetected": false,
+      "proxyDetected": false,
+      "torExitNode": false,
+      "hostingProvider": false,
+      "asn": "AS9304 HSBC",
+      "riskScore": "0 / 100 (Low Risk)"
+    }
+  }
+]
