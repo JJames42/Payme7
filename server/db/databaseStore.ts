@@ -95,6 +95,7 @@ async function saveToNeon(pool: pg.Pool, fullState: DatabaseFullState): Promise<
     );
 
     await client.query('COMMIT');
+    console.log('[Neon Postgres] Transaction committed successfully. State updated in app_state table.');
   } catch (err) {
     await client.query('ROLLBACK');
     throw err;
@@ -601,9 +602,12 @@ export async function saveFullStateToDatabase(fullState: DatabaseFullState): Pro
     if (pool) {
       try {
         await saveToNeon(pool, fullState);
+        console.log('[Neon Postgres] Successfully saved full_state to Neon PostgreSQL.');
       } catch (pgErr) {
-        console.error('[Neon Postgres] Error persisting state to Neon PostgreSQL:', pgErr);
+        console.error('[Neon Postgres] Error persisting state to Neon PostgreSQL, falling back to local JSON backup:', pgErr);
       }
+    } else {
+      console.log('[Neon Postgres] DATABASE_URL not set; using local JSON store as primary.');
     }
   } catch (err) {
     console.error('[Database Storage] Error saving state to database:', err);

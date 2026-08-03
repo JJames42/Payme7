@@ -1117,7 +1117,7 @@ function saveDatabaseStateDebounced() {
   }, 500);
 }
 
-// Initialize AI Workspace Store directly from the single authoritative database: data/app_database.json
+// Initialize AI Workspace Store from persistent database storage
 const initialDbState = loadFullStateFromDatabaseSync();
 let aiWorkspaceStore: AIWorkspaceStore = (initialDbState && initialDbState.aiWorkspace && Array.isArray(initialDbState.aiWorkspace.memories))
   ? initialDbState.aiWorkspace
@@ -1138,7 +1138,7 @@ if (!aiWorkspaceStore.memoryHistoryLogs || !Array.isArray(aiWorkspaceStore.memor
   aiWorkspaceStore.memoryHistoryLogs = [];
 }
 
-// Load SQLite database full state on startup if present
+// Load primary database state on startup
 (async () => {
   try {
     const loadedState = await loadFullStateFromDatabase();
@@ -1182,7 +1182,7 @@ if (!aiWorkspaceStore.memoryHistoryLogs || !Array.isArray(aiWorkspaceStore.memor
         if (records && records.length > 0) {
           currentTransactionStore = replitExportService.buildTransactionStore(records);
           saveDatabaseStateDebounced();
-          console.log('[Persistence] Transaction collections initialized and persisted to app_database.json:', {
+          console.log('[Persistence] Transaction collections persisted to Neon PostgreSQL (local JSON snapshot updated):', {
             masterTransactions: currentTransactionStore.masterTransactions.length,
             exportRecords: currentTransactionStore.exportRecords.length,
             emailRecords: currentTransactionStore.emailRecords.length,
@@ -2003,7 +2003,8 @@ app.get('/api/admin/replit/transactions', requireAdminAuth, async (req, res) => 
 app.get('/api/admin/transactions/store', requireAdminAuth, (req, res) => {
   return res.json({
     success: true,
-    storageFile: 'data/app_database.json',
+    storageEngine: process.env.DATABASE_URL ? 'Neon PostgreSQL (app_state table)' : 'Local JSON File (data/app_database.json)',
+    storageFile: 'data/app_database.json (snapshot backup)',
     backupDirectory: 'data/backups',
     collections: {
       masterTransactionsCount: currentTransactionStore.masterTransactions.length,
