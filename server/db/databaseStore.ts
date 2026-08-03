@@ -1,5 +1,107 @@
 import path from 'path';
 import fs from 'fs';
+import pg from 'pg';
+
+const { Pool } = pg;
+
+let pgPoolInstance: pg.Pool | null = null;
+let schemaInitialized = false;
+
+function getPgPool(): pg.Pool | null {
+  const dbUrl = process.env.DATABASE_URL;
+  if (!dbUrl || dbUrl.trim() === '') return null;
+
+  if (!pgPoolInstance) {
+    const isLocal = dbUrl.includes('localhost') || dbUrl.includes('127.0.0.1');
+    pgPoolInstance = new Pool({
+      connectionString: dbUrl,
+      ssl: isLocal ? false : { rejectUnauthorized: false },
+      max: 10,
+      idleTimeoutMillis: 30000,
+      connectionTimeoutMillis: 10000,
+    });
+
+    pgPoolInstance.on('error', (err) => {
+      console.error('[Neon Postgres] Unexpected background pool error:', err);
+    });
+  }
+  return pgPoolInstance;
+}
+
+async function initPgSchema(pool: pg.Pool): Promise<void> {
+  if (schemaInitialized) return;
+  const client = await pool.connect();
+  try {
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS app_state (
+        key VARCHAR(100) PRIMARY KEY,
+        data JSONB NOT NULL,
+        updated_at TIMESTAMPTZ DEFAULT NOW()
+      );
+    `);
+    schemaInitialized = true;
+  } catch (err) {
+    console.error('[Neon Postgres] Error initializing schema:', err);
+    throw err;
+  } finally {
+    client.release();
+  }
+}
+
+async function saveToNeon(pool: pg.Pool, fullState: DatabaseFullState): Promise<void> {
+  await initPgSchema(pool);
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const jsonStr = JSON.stringify(fullState);
+
+    await client.query(
+      `INSERT INTO app_state (key, data, updated_at)
+       VALUES ($1, $2::jsonb, NOW())
+       ON CONFLICT (key) DO UPDATE SET data = EXCLUDED.data, updated_at = NOW()`,
+      ['full_state', jsonStr]
+    );
+
+    // Also store granular domain sub-keys for targeted queries
+    await client.query(
+      `INSERT INTO app_state (key, data, updated_at)
+       VALUES ($1, $2::jsonb, NOW())
+       ON CONFLICT (key) DO UPDATE SET data = EXCLUDED.data, updated_at = NOW()`,
+      ['ai_workspace', JSON.stringify(fullState.aiWorkspace)]
+    );
+    await client.query(
+      `INSERT INTO app_state (key, data, updated_at)
+       VALUES ($1, $2::jsonb, NOW())
+       ON CONFLICT (key) DO UPDATE SET data = EXCLUDED.data, updated_at = NOW()`,
+      ['admin_sessions', JSON.stringify(fullState.adminSessions)]
+    );
+    await client.query(
+      `INSERT INTO app_state (key, data, updated_at)
+       VALUES ($1, $2::jsonb, NOW())
+       ON CONFLICT (key) DO UPDATE SET data = EXCLUDED.data, updated_at = NOW()`,
+      ['admin_settings', JSON.stringify(fullState.adminSettings)]
+    );
+    await client.query(
+      `INSERT INTO app_state (key, data, updated_at)
+       VALUES ($1, $2::jsonb, NOW())
+       ON CONFLICT (key) DO UPDATE SET data = EXCLUDED.data, updated_at = NOW()`,
+      ['live_chat_settings', JSON.stringify(fullState.liveChatSettings)]
+    );
+    await client.query(
+      `INSERT INTO app_state (key, data, updated_at)
+       VALUES ($1, $2::jsonb, NOW())
+       ON CONFLICT (key) DO UPDATE SET data = EXCLUDED.data, updated_at = NOW()`,
+      ['transaction_store', JSON.stringify(fullState.transactionStore)]
+    );
+
+    await client.query('COMMIT');
+  } catch (err) {
+    await client.query('ROLLBACK');
+    throw err;
+  } finally {
+    client.release();
+  }
+}
 
 export interface AIWorkspaceMemory {
   id: string;
@@ -366,9 +468,93 @@ export function loadFullStateFromDatabaseSync(): DatabaseFullState {
   return defaultState;
 }
 
-// Load full state from primary database storage or backup
+// Load full state from primary database storage (Neon PostgreSQL) or fallback JSON
 export async function loadFullStateFromDatabase(): Promise<DatabaseFullState> {
   ensureDirectories();
+  const pool = getPgPool();
+
+  if (pool) {
+    try {
+      await initPgSchema(pool);
+
+      const res = await pool.query('SELECT data FROM app_state WHERE key = $1', ['full_state']);
+      if (res.rows && res.rows.length > 0 && res.rows[0].data) {
+        console.log('[Neon Postgres] Loaded full state successfully from Neon PostgreSQL database.');
+        return validateAndSanitizeState(res.rows[0].data);
+      } else {
+        console.log('[Neon Postgres] Database empty or missing full_state. Initializing migration from app_database.json...');
+        let stateToMigrate: DatabaseFullState | null = null;
+
+        if (fs.existsSync(PRIMARY_DB_FILE)) {
+          try {
+            const raw = fs.readFileSync(PRIMARY_DB_FILE, 'utf8');
+            const parsed = JSON.parse(raw);
+            if (parsed && typeof parsed === 'object') {
+              stateToMigrate = validateAndSanitizeState(parsed);
+            }
+          } catch (err) {
+            console.error('[Database Storage] Error reading app_database.json for migration:', err);
+          }
+        }
+
+        if (!stateToMigrate) {
+          stateToMigrate = restoreFromBackup();
+        }
+
+        if (!stateToMigrate) {
+          stateToMigrate = {
+            aiWorkspace: { memories: [], chatHistory: [] },
+            adminSessions: {},
+            adminSettings: {
+              hkAgents: [],
+              lastAdminHeartbeatTime: 0,
+              activeAdminSupervisorId: null,
+              activeAdminChatId: null,
+              agentLastActiveMap: {}
+            },
+            liveChatSettings: { chatSessions: [], deletedChatIds: [] },
+            transactionStore: {
+              masterTransactions: [],
+              exportRecords: [],
+              emailRecords: [],
+              sendHistory: [],
+              transactionIndexes: {},
+              workflowTimelines: [],
+              exportSnapshots: [],
+              emailEvents: []
+            }
+          };
+        }
+
+        // Migrate state into Neon PostgreSQL
+        await saveToNeon(pool, stateToMigrate);
+        console.log('[Neon Postgres] Successfully migrated existing data from app_database.json into Neon PostgreSQL.');
+        return stateToMigrate;
+      }
+    } catch (err) {
+      console.error('[Neon Postgres] Error querying Neon PostgreSQL, falling back to local JSON store:', err);
+    }
+  }
+
+  // Fallback if DATABASE_URL is not provided or pool connection fails
+  if (fs.existsSync(PRIMARY_DB_FILE)) {
+    try {
+      const raw = fs.readFileSync(PRIMARY_DB_FILE, 'utf8');
+      const parsed = JSON.parse(raw);
+      if (parsed && typeof parsed === 'object') {
+        return validateAndSanitizeState(parsed);
+      }
+    } catch (err) {
+      console.error('[Database Storage] Primary DB JSON read/parse error:', err);
+    }
+  }
+
+  const restored = restoreFromBackup();
+  if (restored) {
+    await saveFullStateToDatabase(restored);
+    return restored;
+  }
+
   const defaultState: DatabaseFullState = {
     aiWorkspace: { memories: [], chatHistory: [] },
     adminSessions: {},
@@ -392,33 +578,12 @@ export async function loadFullStateFromDatabase(): Promise<DatabaseFullState> {
     }
   };
 
-  // 1. Try primary database JSON file
-  if (fs.existsSync(PRIMARY_DB_FILE)) {
-    try {
-      const raw = fs.readFileSync(PRIMARY_DB_FILE, 'utf8');
-      const parsed = JSON.parse(raw);
-      if (parsed && typeof parsed === 'object') {
-        return validateAndSanitizeState(parsed);
-      }
-    } catch (err) {
-      console.error('[Database Storage] Primary DB JSON read/parse error:', err);
-    }
-  }
-
-  // 2. If primary storage missing or corrupted, try restoring from backup
-  const restored = restoreFromBackup();
-  if (restored) {
-    await saveFullStateToDatabase(restored);
-    return restored;
-  }
-
-  // 3. Clean initial setup
   console.log('[Database Storage] Initialized clean persistent database storage.');
   await saveFullStateToDatabase(defaultState);
   return defaultState;
 }
 
-// Save full state to primary storage atomically with automatic backup before write
+// Save full state to Neon PostgreSQL primary storage and create automatic backup
 export async function saveFullStateToDatabase(fullState: DatabaseFullState): Promise<void> {
   try {
     ensureDirectories();
@@ -426,11 +591,22 @@ export async function saveFullStateToDatabase(fullState: DatabaseFullState): Pro
     // 1. Create automatic backup before writing
     createAutomaticBackup(fullState);
 
-    // 2. Atomic write to primary database file
+    // 2. Atomic write to local primary database JSON backup file
     const tmpFile = path.resolve(DATA_DIR, 'app_database.json.tmp');
     fs.writeFileSync(tmpFile, JSON.stringify(fullState, null, 2), 'utf8');
     fs.renameSync(tmpFile, PRIMARY_DB_FILE);
+
+    // 3. Persist state to Neon PostgreSQL if DATABASE_URL is configured
+    const pool = getPgPool();
+    if (pool) {
+      try {
+        await saveToNeon(pool, fullState);
+      } catch (pgErr) {
+        console.error('[Neon Postgres] Error persisting state to Neon PostgreSQL:', pgErr);
+      }
+    }
   } catch (err) {
     console.error('[Database Storage] Error saving state to database:', err);
   }
 }
+
