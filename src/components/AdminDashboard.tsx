@@ -373,11 +373,11 @@ export default function AdminDashboard({ onBackToHome }: AdminDashboardProps) {
     hasInitialLoggedInRef.current = false;
     setLoginError(null);
 
-    // Keep URL on /admin/london-stie/2026?admin=true and replace history entry so pressing Back does not navigate to authenticated state
+    // Keep URL on /london-site/admin and replace history entry so pressing Back does not navigate to authenticated state
     try {
       const url = new URL(window.location.href);
-      url.pathname = '/admin/london-stie/2026';
-      url.searchParams.set('admin', 'true');
+      url.pathname = '/london-site/admin';
+      url.searchParams.delete('admin');
       window.history.replaceState({ loggedOut: true }, '', url.toString());
     } catch (e) {
       // ignore URL parsing fallback
@@ -1863,7 +1863,7 @@ export default function AdminDashboard({ onBackToHome }: AdminDashboardProps) {
 
           <div className="border-t border-slate-800/60 pt-4.5 text-center text-[10px] text-slate-500 space-y-1">
             <p>© 2026 The Hongkong and Shanghai Banking Corporation Limited.</p>
-            <p>Direct Connection Path: /admin/london-stie/2026</p>
+            <p>Direct Connection Path: /london-site/admin</p>
           </div>
         </div>
       </div>

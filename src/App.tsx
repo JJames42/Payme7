@@ -7,11 +7,12 @@ const getInitialView = (): 'home' | 'chat' | 'admin' => {
   if (typeof window === 'undefined') return 'home';
   try {
     const params = new URLSearchParams(window.location.search);
-    const path = window.location.pathname;
+    const rawPath = window.location.pathname;
+    const path = rawPath.replace(/\/$/, '') || '/';
 
-    if (path === '/admin/london-stie/2026' || path === '/admin' || params.get('admin') === 'true') {
+    if (path === '/london-site/admin') {
       return 'admin';
-    } else if (path === '/support' || path === '/live-chat' || params.get('chat') === 'true' || params.get('channel')) {
+    } else if (path === '/chat' || path === '/support' || path === '/live-chat' || params.get('chat') === 'true' || params.get('channel')) {
       return 'chat';
     }
   } catch (error) {
@@ -59,11 +60,12 @@ export default function App() {
     const handleUrlChange = () => {
       try {
         const params = new URLSearchParams(window.location.search);
-        const path = window.location.pathname;
+        const rawPath = window.location.pathname;
+        const path = rawPath.replace(/\/$/, '') || '/';
 
-        if (path === '/admin/london-stie/2026' || path === '/admin' || params.get('admin') === 'true') {
+        if (path === '/london-site/admin') {
           setView('admin');
-        } else if (path === '/support' || path === '/live-chat' || params.get('chat') === 'true' || params.get('channel')) {
+        } else if (path === '/chat' || path === '/support' || path === '/live-chat' || params.get('chat') === 'true' || params.get('channel')) {
           setView('chat');
           const channel = params.get('channel');
           if (channel) {
@@ -93,11 +95,9 @@ export default function App() {
       url.searchParams.delete('channel');
 
       if (newView === 'chat') {
-        url.pathname = '/support';
-        url.searchParams.set('chat', 'true');
+        url.pathname = '/chat';
       } else if (newView === 'admin') {
-        url.pathname = '/admin/london-stie/2026';
-        url.searchParams.set('admin', 'true');
+        url.pathname = '/london-site/admin';
       } else {
         url.pathname = '/';
       }
