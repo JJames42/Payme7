@@ -2006,6 +2006,12 @@
         "amount": 99.99,
         "status": "COMPLETED",
         "createdAt": "2026-08-03T12:09:09.180Z"
+      },
+      {
+        "id": "test_tx_1785758960497",
+        "amount": 99.99,
+        "status": "COMPLETED",
+        "createdAt": "2026-08-03T12:09:20.497Z"
       }
     ],
     "exportRecords": [
@@ -2777,121 +2783,121 @@
     "transactionIndexes": {
       "ref:fp10082914": {
         "key": "ref:fp10082914",
-        "updatedAt": "2026-08-03T12:11:40.730Z",
+        "updatedAt": "2026-08-03T12:06:17.122Z",
         "transactionId": "tx-uuid-100",
         "referenceNumber": "FP10082914"
       },
       "ref:fp10082915": {
         "key": "ref:fp10082915",
-        "updatedAt": "2026-08-03T12:11:40.930Z",
+        "updatedAt": "2026-08-03T12:06:17.222Z",
         "transactionId": "tx-uuid-101",
         "referenceNumber": "FP10082915"
       },
       "ref:fp10082916": {
         "key": "ref:fp10082916",
-        "updatedAt": "2026-08-03T12:11:40.930Z",
+        "updatedAt": "2026-08-03T12:06:17.223Z",
         "transactionId": "tx-uuid-102",
         "referenceNumber": "FP10082916"
       },
       "ref:fp10082917": {
         "key": "ref:fp10082917",
-        "updatedAt": "2026-08-03T12:11:40.930Z",
+        "updatedAt": "2026-08-03T12:06:17.223Z",
         "transactionId": "tx-uuid-103",
         "referenceNumber": "FP10082917"
       },
       "ref:fp10082918": {
         "key": "ref:fp10082918",
-        "updatedAt": "2026-08-03T12:11:40.930Z",
+        "updatedAt": "2026-08-03T12:06:17.223Z",
         "transactionId": "tx-uuid-104",
         "referenceNumber": "FP10082918"
       },
       "uuid:tx-uuid-100": {
         "key": "uuid:tx-uuid-100",
-        "updatedAt": "2026-08-03T12:11:40.830Z",
+        "updatedAt": "2026-08-03T12:06:17.123Z",
         "transactionId": "tx-uuid-100",
         "referenceNumber": "FP10082914"
       },
       "uuid:tx-uuid-101": {
         "key": "uuid:tx-uuid-101",
-        "updatedAt": "2026-08-03T12:11:40.930Z",
+        "updatedAt": "2026-08-03T12:06:17.223Z",
         "transactionId": "tx-uuid-101",
         "referenceNumber": "FP10082915"
       },
       "uuid:tx-uuid-102": {
         "key": "uuid:tx-uuid-102",
-        "updatedAt": "2026-08-03T12:11:40.930Z",
+        "updatedAt": "2026-08-03T12:06:17.223Z",
         "transactionId": "tx-uuid-102",
         "referenceNumber": "FP10082916"
       },
       "uuid:tx-uuid-103": {
         "key": "uuid:tx-uuid-103",
-        "updatedAt": "2026-08-03T12:11:40.930Z",
+        "updatedAt": "2026-08-03T12:06:17.223Z",
         "transactionId": "tx-uuid-103",
         "referenceNumber": "FP10082917"
       },
       "uuid:tx-uuid-104": {
         "key": "uuid:tx-uuid-104",
-        "updatedAt": "2026-08-03T12:11:40.930Z",
+        "updatedAt": "2026-08-03T12:06:17.322Z",
         "transactionId": "tx-uuid-104",
         "referenceNumber": "FP10082918"
       },
       "master:mtx-fp10082914": {
         "key": "master:mtx-fp10082914",
-        "updatedAt": "2026-08-03T12:11:40.830Z",
+        "updatedAt": "2026-08-03T12:06:17.123Z",
         "transactionId": "tx-uuid-100",
         "referenceNumber": "FP10082914"
       },
       "master:mtx-fp10082915": {
         "key": "master:mtx-fp10082915",
-        "updatedAt": "2026-08-03T12:11:40.930Z",
+        "updatedAt": "2026-08-03T12:06:17.222Z",
         "transactionId": "tx-uuid-101",
         "referenceNumber": "FP10082915"
       },
       "master:mtx-fp10082916": {
         "key": "master:mtx-fp10082916",
-        "updatedAt": "2026-08-03T12:11:40.930Z",
+        "updatedAt": "2026-08-03T12:06:17.223Z",
         "transactionId": "tx-uuid-102",
         "referenceNumber": "FP10082916"
       },
       "master:mtx-fp10082917": {
         "key": "master:mtx-fp10082917",
-        "updatedAt": "2026-08-03T12:11:40.930Z",
+        "updatedAt": "2026-08-03T12:06:17.223Z",
         "transactionId": "tx-uuid-103",
         "referenceNumber": "FP10082917"
       },
       "master:mtx-fp10082918": {
         "key": "master:mtx-fp10082918",
-        "updatedAt": "2026-08-03T12:11:40.930Z",
+        "updatedAt": "2026-08-03T12:06:17.223Z",
         "transactionId": "tx-uuid-104",
         "referenceNumber": "FP10082918"
       },
       "customer:techcorp hk ltd": {
         "key": "customer:techcorp hk ltd",
-        "updatedAt": "2026-08-03T12:11:40.830Z",
+        "updatedAt": "2026-08-03T12:06:17.222Z",
         "transactionId": "tx-uuid-100",
         "referenceNumber": "FP10082914"
       },
       "customer:global sourcing group": {
         "key": "customer:global sourcing group",
-        "updatedAt": "2026-08-03T12:11:40.930Z",
+        "updatedAt": "2026-08-03T12:06:17.322Z",
         "transactionId": "tx-uuid-104",
         "referenceNumber": "FP10082918"
       },
       "customer:kowloon enterprise co": {
         "key": "customer:kowloon enterprise co",
-        "updatedAt": "2026-08-03T12:11:40.930Z",
+        "updatedAt": "2026-08-03T12:06:17.223Z",
         "transactionId": "tx-uuid-103",
         "referenceNumber": "FP10082917"
       },
       "customer:apex digital logistics": {
         "key": "customer:apex digital logistics",
-        "updatedAt": "2026-08-03T12:11:40.930Z",
+        "updatedAt": "2026-08-03T12:06:17.223Z",
         "transactionId": "tx-uuid-102",
         "referenceNumber": "FP10082916"
       },
       "customer:pacific trading solutions": {
         "key": "customer:pacific trading solutions",
-        "updatedAt": "2026-08-03T12:11:40.930Z",
+        "updatedAt": "2026-08-03T12:06:17.223Z",
         "transactionId": "tx-uuid-101",
         "referenceNumber": "FP10082915"
       }
@@ -2951,15 +2957,6 @@
         "description": "Transaction FP10082918 currently in workflow stage On Hold",
         "transactionId": "tx-uuid-104",
         "referenceNumber": "FP10082918"
-      },
-      {
-        "id": "timeline-test_tx_1785758949180",
-        "title": "Workflow Stage: undefined",
-        "updatedAt": "undefinedTundefinedZ",
-        "updatedBy": "System",
-        "stageIndex": 2,
-        "description": "Transaction undefined currently in workflow stage undefined",
-        "transactionId": "test_tx_1785758949180"
       }
     ],
     "exportSnapshots": [

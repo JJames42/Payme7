@@ -977,6 +977,7 @@ function savePresenceToDisk() {
       activeAdminChatId,
       agentLastActiveMap
     }), 'utf8');
+    saveDatabaseStateDebounced();
   } catch (err) {
     console.error('[Persistence] Error saving presence state:', err);
   }
@@ -1118,7 +1119,7 @@ function saveDatabaseStateDebounced() {
 }
 
 // Initialize AI Workspace Store from persistent database storage
-const initialDbState = loadFullStateFromDatabaseSync();
+const initialDbState = process.env.DATABASE_URL ? null : loadFullStateFromDatabaseSync();
 let aiWorkspaceStore: AIWorkspaceStore = (initialDbState && initialDbState.aiWorkspace && Array.isArray(initialDbState.aiWorkspace.memories))
   ? initialDbState.aiWorkspace
   : {
@@ -1566,13 +1567,17 @@ function getLiveActiveWorkspaceMemoriesWithSyncReport(): {
 } {
   let dbLoaded = false;
   try {
-    const freshDbState = loadFullStateFromDatabaseSync();
-    if (freshDbState?.aiWorkspace?.memories && Array.isArray(freshDbState.aiWorkspace.memories)) {
-      const memoryMap = new Map<string, any>();
-      (freshDbState.aiWorkspace.memories || []).forEach((m: any) => { if (m?.id) memoryMap.set(m.id, m); });
-      (aiWorkspaceStore.memories || []).forEach((m: any) => { if (m?.id) memoryMap.set(m.id, m); });
-      aiWorkspaceStore.memories = Array.from(memoryMap.values());
-      dbLoaded = true;
+    if (!process.env.DATABASE_URL) {
+      const freshDbState = loadFullStateFromDatabaseSync();
+      if (freshDbState?.aiWorkspace?.memories && Array.isArray(freshDbState.aiWorkspace.memories)) {
+        const memoryMap = new Map<string, any>();
+        (freshDbState.aiWorkspace.memories || []).forEach((m: any) => { if (m?.id) memoryMap.set(m.id, m); });
+        (aiWorkspaceStore.memories || []).forEach((m: any) => { if (m?.id) memoryMap.set(m.id, m); });
+        aiWorkspaceStore.memories = Array.from(memoryMap.values());
+        dbLoaded = true;
+      } else if (aiWorkspaceStore.memories && Array.isArray(aiWorkspaceStore.memories)) {
+        dbLoaded = true;
+      }
     } else if (aiWorkspaceStore.memories && Array.isArray(aiWorkspaceStore.memories)) {
       dbLoaded = true;
     }

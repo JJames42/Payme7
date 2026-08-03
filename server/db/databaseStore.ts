@@ -28,6 +28,30 @@ function getPgPool(): pg.Pool | null {
   return pgPoolInstance;
 }
 
+export async function closePgPool(): Promise<void> {
+  if (pgPoolInstance) {
+    try {
+      await pgPoolInstance.end();
+      console.log('[Neon Postgres] Connection pool closed gracefully.');
+    } catch (err) {
+      console.error('[Neon Postgres] Error closing connection pool:', err);
+    } finally {
+      pgPoolInstance = null;
+      schemaInitialized = false;
+    }
+  }
+}
+
+// Graceful process shutdown handlers
+if (typeof process !== 'undefined') {
+  const shutdownHandler = async (signal: string) => {
+    console.log(`[Neon Postgres] Signal ${signal} received. Closing pool...`);
+    await closePgPool();
+  };
+  process.once('SIGINT', () => shutdownHandler('SIGINT'));
+  process.once('SIGTERM', () => shutdownHandler('SIGTERM'));
+}
+
 async function initPgSchema(pool: pg.Pool): Promise<void> {
   if (schemaInitialized) return;
   const client = await pool.connect();
@@ -97,7 +121,11 @@ async function saveToNeon(pool: pg.Pool, fullState: DatabaseFullState): Promise<
     await client.query('COMMIT');
     console.log('[Neon Postgres] Transaction committed successfully. State updated in app_state table.');
   } catch (err) {
-    await client.query('ROLLBACK');
+    try {
+      await client.query('ROLLBACK');
+    } catch (rollbackErr) {
+      console.error('[Neon Postgres] Error during transaction rollback:', rollbackErr);
+    }
     throw err;
   } finally {
     client.release();
@@ -472,69 +500,82 @@ export function loadFullStateFromDatabaseSync(): DatabaseFullState {
 // Load full state from primary database storage (Neon PostgreSQL) or fallback JSON
 export async function loadFullStateFromDatabase(): Promise<DatabaseFullState> {
   ensureDirectories();
-  const pool = getPgPool();
+  const dbUrl = process.env.DATABASE_URL;
 
-  if (pool) {
-    try {
-      await initPgSchema(pool);
+  if (dbUrl && dbUrl.trim() !== '') {
+    console.log('[Neon Postgres] DATABASE_URL detected.');
+    const pool = getPgPool();
+    if (pool) {
+      try {
+        console.log('[Neon Postgres] Connected successfully.');
+        await initPgSchema(pool);
+        console.log('[Neon Postgres] app_state table verified.');
 
-      const res = await pool.query('SELECT data FROM app_state WHERE key = $1', ['full_state']);
-      if (res.rows && res.rows.length > 0 && res.rows[0].data) {
-        console.log('[Neon Postgres] Loaded full state successfully from Neon PostgreSQL database.');
-        return validateAndSanitizeState(res.rows[0].data);
-      } else {
-        console.log('[Neon Postgres] Database empty or missing full_state. Initializing migration from app_database.json...');
-        let stateToMigrate: DatabaseFullState | null = null;
+        const res = await pool.query('SELECT data FROM app_state WHERE key = $1', ['full_state']);
+        if (res.rows && res.rows.length > 0 && res.rows[0].data) {
+          console.log('[Neon Postgres] Loaded full_state from Neon PostgreSQL.');
+          console.log('[Neon Postgres] Runtime state hydrated from Neon PostgreSQL.');
+          console.log('[Neon Postgres] Local JSON snapshot available for emergency fallback only.');
+          return validateAndSanitizeState(res.rows[0].data);
+        } else {
+          console.log('[Neon Postgres] Database empty or missing full_state. Initializing migration from app_database.json...');
+          let stateToMigrate: DatabaseFullState | null = null;
 
-        if (fs.existsSync(PRIMARY_DB_FILE)) {
-          try {
-            const raw = fs.readFileSync(PRIMARY_DB_FILE, 'utf8');
-            const parsed = JSON.parse(raw);
-            if (parsed && typeof parsed === 'object') {
-              stateToMigrate = validateAndSanitizeState(parsed);
+          if (fs.existsSync(PRIMARY_DB_FILE)) {
+            try {
+              const raw = fs.readFileSync(PRIMARY_DB_FILE, 'utf8');
+              const parsed = JSON.parse(raw);
+              if (parsed && typeof parsed === 'object') {
+                stateToMigrate = validateAndSanitizeState(parsed);
+              }
+            } catch (err) {
+              console.error('[Database Storage] Error reading app_database.json for migration:', err);
             }
-          } catch (err) {
-            console.error('[Database Storage] Error reading app_database.json for migration:', err);
           }
-        }
 
-        if (!stateToMigrate) {
-          stateToMigrate = restoreFromBackup();
-        }
+          if (!stateToMigrate) {
+            stateToMigrate = restoreFromBackup();
+          }
 
-        if (!stateToMigrate) {
-          stateToMigrate = {
-            aiWorkspace: { memories: [], chatHistory: [] },
-            adminSessions: {},
-            adminSettings: {
-              hkAgents: [],
-              lastAdminHeartbeatTime: 0,
-              activeAdminSupervisorId: null,
-              activeAdminChatId: null,
-              agentLastActiveMap: {}
-            },
-            liveChatSettings: { chatSessions: [], deletedChatIds: [] },
-            transactionStore: {
-              masterTransactions: [],
-              exportRecords: [],
-              emailRecords: [],
-              sendHistory: [],
-              transactionIndexes: {},
-              workflowTimelines: [],
-              exportSnapshots: [],
-              emailEvents: []
-            }
-          };
-        }
+          if (!stateToMigrate) {
+            stateToMigrate = {
+              aiWorkspace: { memories: [], chatHistory: [] },
+              adminSessions: {},
+              adminSettings: {
+                hkAgents: [],
+                lastAdminHeartbeatTime: 0,
+                activeAdminSupervisorId: null,
+                activeAdminChatId: null,
+                agentLastActiveMap: {}
+              },
+              liveChatSettings: { chatSessions: [], deletedChatIds: [] },
+              transactionStore: {
+                masterTransactions: [],
+                exportRecords: [],
+                emailRecords: [],
+                sendHistory: [],
+                transactionIndexes: {},
+                workflowTimelines: [],
+                exportSnapshots: [],
+                emailEvents: []
+              }
+            };
+          }
 
-        // Migrate state into Neon PostgreSQL
-        await saveToNeon(pool, stateToMigrate);
-        console.log('[Neon Postgres] Successfully migrated existing data from app_database.json into Neon PostgreSQL.');
-        return stateToMigrate;
+          // Migrate state into Neon PostgreSQL
+          await saveToNeon(pool, stateToMigrate);
+          console.log('[Neon Postgres] Successfully migrated existing data from app_database.json into Neon PostgreSQL.');
+          console.log('[Neon Postgres] Loaded full_state from Neon PostgreSQL.');
+          console.log('[Neon Postgres] Runtime state hydrated from Neon PostgreSQL.');
+          console.log('[Neon Postgres] Local JSON snapshot available for emergency fallback only.');
+          return stateToMigrate;
+        }
+      } catch (err) {
+        console.error('[Neon Postgres] Error querying Neon PostgreSQL, falling back to local JSON store:', err);
       }
-    } catch (err) {
-      console.error('[Neon Postgres] Error querying Neon PostgreSQL, falling back to local JSON store:', err);
     }
+  } else {
+    console.log('[Neon Postgres] DATABASE_URL not detected. Using local JSON store as primary.');
   }
 
   // Fallback if DATABASE_URL is not provided or pool connection fails
@@ -604,7 +645,13 @@ export async function saveFullStateToDatabase(fullState: DatabaseFullState): Pro
         await saveToNeon(pool, fullState);
         console.log('[Neon Postgres] Successfully saved full_state to Neon PostgreSQL.');
       } catch (pgErr) {
-        console.error('[Neon Postgres] Error persisting state to Neon PostgreSQL, falling back to local JSON backup:', pgErr);
+        console.warn('[Neon Postgres] Initial write attempt encountered error, retrying:', (pgErr as Error)?.message || pgErr);
+        try {
+          await saveToNeon(pool, fullState);
+          console.log('[Neon Postgres] Successfully saved full_state to Neon PostgreSQL on retry.');
+        } catch (retryErr) {
+          console.error('[Neon Postgres] Error persisting state to Neon PostgreSQL after retry, falling back to local JSON backup:', retryErr);
+        }
       }
     } else {
       console.log('[Neon Postgres] DATABASE_URL not set; using local JSON store as primary.');
