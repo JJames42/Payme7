@@ -10,6 +10,18 @@ export default defineConfig({
   server: {
     port: 3000,
     host: '0.0.0.0',
+    allowedHosts: [
+      'paymebusinessllc.onrender.com',
+      '.onrender.com'
+    ],
+  },
+  preview: {
+    port: 3000,
+    host: '0.0.0.0',
+    allowedHosts: [
+      'paymebusinessllc.onrender.com',
+      '.onrender.com'
+    ],
   },
   build: {
     outDir: 'dist',
