@@ -2196,13 +2196,13 @@ Description: ${formDesc}`;
     }
   };
 
-  const handleRateSession = async (ratingVal: number) => {
+  const handleRateSession = async (ratingVal: number, comment?: string) => {
     if (!session) return;
     try {
       const res = await fetch(`/api/chats/${session.id}/rating`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ rating: ratingVal })
+        body: JSON.stringify({ rating: ratingVal, comment })
       });
       if (res.ok) {
         const data = await res.json();
@@ -3740,7 +3740,7 @@ Description: ${formDesc}`;
                 })}
 
                 {/* Typing Indicator */}
-                {(session.agentTyping || isBotTyping) && (
+                {!isResolvedCase && !isClosedCase && (session.agentTyping || isBotTyping) && (
                   <div className="flex flex-col items-start gap-1 w-full pr-12 my-2 animate-fadeIn">
                     <div className="flex gap-2.5 items-start">
                       <img 

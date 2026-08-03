@@ -719,18 +719,18 @@
       "ip": "102.88.111.245",
       "token": "d3f59a10a70da5721ffb837ce0437806204696f1ba626e376abd082376e797de",
       "createdAt": 1785763712378,
-      "lastActiveAt": 1785766134200
+      "lastActiveAt": 1785765902180
     }
   },
   "adminSettings": {
-    "lastAdminHeartbeatTime": 1785766134200,
+    "lastAdminHeartbeatTime": 1785765902180,
     "activeAdminSupervisorId": "mei-ling-tse",
     "activeAdminChatId": "chat-l5r02mqcw",
     "agentLastActiveMap": {
       "carmen-lee": 1785763714465,
       "james-chan": 1785763714465,
       "ka-hing-wong": 1785764747674,
-      "mei-ling-tse": 1785766134200,
+      "mei-ling-tse": 1785765902180,
       "anson-lau": 1785763714465,
       "chun-hei-ng": 1785763714465,
       "siu-ming-leung": 1785763714465,
@@ -756,10 +756,9 @@
         "id": "chat-l5r02mqcw",
         "phone": "",
         "caseId": "PM-HK-20260727-219633",
-        "status": "resolved",
+        "status": "active",
         "agentId": "mei-ling-tse",
         "aiState": "welcome",
-        "isClosed": false,
         "isLocked": false,
         "language": "en",
         "messages": [
@@ -775,20 +774,12 @@
             "sender": "agent",
             "agentName": "Mei Ling Tse",
             "timestamp": "2026-07-30T20:39:20.965Z"
-          },
-          {
-            "id": "csat-prompt-1785766099845",
-            "text": "CSAT_RATING_PROMPT",
-            "sender": "bot",
-            "agentName": "Mei Ling Tse",
-            "timestamp": "2026-08-03T14:08:19.845Z"
           }
         ],
         "userName": "Website Visitor",
         "createdAt": "2026-07-27T20:16:04.300Z",
         "userEmail": "",
         "lastSeenAt": "2026-07-27T20:16:04.300Z",
-        "resolvedAt": "2026-08-03T14:08:19.845Z",
         "agentTyping": false,
         "visitorInfo": {
           "ip": "127.0.0.1",
@@ -835,7 +826,7 @@
         "caseStatusConfig": {
           "title": "Case Status",
           "visible": false,
-          "subtitle": "Completed",
+          "subtitle": "Received",
           "progressSteps": [
             {
               "id": 1,
@@ -865,11 +856,10 @@
           "requiredActionsTitle": "REQUIRED ACTIONS"
         },
         "connectionStatus": "Disconnected",
-        "timelineProgress": 6,
+        "timelineProgress": 2,
         "voiceNotesAllowed": true,
         "attachmentsAllowed": true,
-        "actionsRequiredEnabled": false,
-        "lastCustomerActivityAt": 1785766099845
+        "actionsRequiredEnabled": false
       },
       {
         "id": "chat-hum4aanfg",
@@ -13295,4 +13285,4 @@
           "dateSentStr": "2026-07-15",
           "senderEmail": "notifications@payme.hsbc.com.hk",
           "timeSentStr": "09:15:45",
-          "rawMimeEmail": "From: notifications@payme.hsbc.com.hk\r\nTo: alex@payme.hk\r\nSubject: [HSBC PayMe Business] Credit Alert & Official Payment Advice - Ref: FP96130500\r\nDate: 2026-07-15T09:15:45.876Z\r\nMessage-ID: <credit-FP96130500@payme.hsbc.com.hk>\r\nMIME-Version: 1.0\r\nContent-Type: multipart/alternative; boundary=\"----=_Part_Credit_FP96130500\"\r\n\r\n------=_Part_Credit_FP96130500\r\nContent-Type: text/plain; charset=UTF-8\r\n\r\nHSBC PayMe Business - Official Credit Alert & Payment Advice\n------------------------------------------------------------\nReference Number: FP96130500\nMaster Transaction ID: MTX-FP96130500\nCustomer / Merchant: Alex\nAmount: HK$ 500\nWorkflow Stage: Completed\nDate & Time Sent: 2026-07-15 09:15:45 HKT\nSender Email: notifications@payme.hsbc.com.hk\nRecipient Email: alex@payme.hk\nMessage ID: <credit-FP96130500@payme.hsbc.com.hk>\nDelivery Status: DELIVERED\n\n[Payment Instructions]\n1. Ensure funds are credited to your registered HSBC PayMe Business settlement account within T+2
+          "rawMimeEmail": "From: notifications@payme.hsbc.com.hk\r\nTo: alex@payme.hk\r\nSubject: [HSBC PayMe Business] Credit Alert & Official Payment Advice - Ref: FP96130500\r\nDate: 2026-07-15T09:15:45.876Z\r\nMessage-ID: <credit-FP96130500@payme.hsbc.com.hk>\r\nMIME-Version: 1.0\r\nContent-Type: multipart/alternative; boundary=\"----=_Part_Credit_FP96130500\"\r\n\r\n------=_Part_Credit_FP96130500\r\nContent-Type: text/plain; charset=UTF-8\r\n\r\nHSBC PayMe Business - Official Credit Alert & Payment Advice\n------------------------------------------------------------\nReference Number: FP96130500\nMaster Transaction ID: MTX-FP96130500\nCustomer / Merchant: Alex\nAmount: HK$ 500\nWorkflow Stage: Completed\nDate & Time Sent: 2026-07-15 09:15:45 HKT\nSender Email: notifications@payme.hsbc.com.hk\nRecipient Email: alex@payme.hk\nMessage ID: <credit-FP96130500@payme.hsbc.com.hk>\nDelivery Status: DELIVERED\n\n[Payment Instructions]\n1. Ensure funds are credited to your registered HSBC PayMe Business settlement account within T+2 settlement cycle.\n2. Keep reference number FP96130500 for all billing and support inquiries.\n\n[Additional Payment Instructions]\n- For transactions held under 'Payment Under Review', submit an updated Business Registration Number (BRN) certificate.\n- Verify that the account title matches the registered business entity name.\n\n[Compliance Notices]\n- Issued unde

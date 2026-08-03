@@ -1329,7 +1329,7 @@ app.get('/api/chats', pollingRateLimiter, requireAdminAuth, (req, res) => {
     if (lastPoll > 0) {
       if (diffMs < 12000) {
         session.customerOnline = true;
-        session.connectionStatus = session.connectionStatus || 'Connected';
+        session.connectionStatus = 'Connected';
       } else if (diffMs < 30000) {
         session.customerOnline = true;
         session.connectionStatus = 'Reconnecting';
@@ -1473,6 +1473,77 @@ function sanitizeAndMigrateMemories() {
   if (!aiWorkspaceStore.memoryHistoryLogs || !Array.isArray(aiWorkspaceStore.memoryHistoryLogs)) {
     aiWorkspaceStore.memoryHistoryLogs = [];
   }
+
+  // Ensure "Instruction: Dynamic Human Agent Greeting by Category" procedure memory exists and is up to date
+  const greetingInstructionTitle = 'Instruction: Dynamic Human Agent Greeting by Category';
+  const greetingInstructionContent = `Instruction: Dynamic Human Agent Greeting by Category
+
+When a human support specialist accepts a customer conversation, generate the first greeting based on the category the customer selected.
+
+Rules:
+
+* Do not mention internal case IDs.
+* Do not say “I’ve accepted your case.”
+* Do not say “I’m reviewing your case” unless the agent already has enough information about the issue.
+* Do not assume the customer’s problem.
+* The first message should acknowledge the customer, thank them for waiting, and invite them to explain their issue.
+* The greeting must sound natural, professional, and human, not scripted.
+
+Transaction Issues
+
+Hello, this is {{agentName}}. Thank you for waiting. Could you please tell me what happened with your transaction?
+
+Payment Issues
+
+Hello, this is {{agentName}}. Thank you for waiting. Could you please tell me what happened with your payment?
+
+Transfer Issues
+
+Hello, this is {{agentName}}. Thank you for waiting. Could you please tell me what happened with your transfer?
+
+Account Issues
+
+Hello, this is {{agentName}}. Thank you for waiting. Could you please tell me what issue you’re experiencing with your account?
+
+Security Issues
+
+Hello, this is {{agentName}}. Thank you for waiting. Could you please tell me about the security issue you’re experiencing?
+
+Verification Issues
+
+Hello, this is {{agentName}}. Thank you for waiting. Could you please tell me what you need help verifying?
+
+Other Issues
+
+Hello, this is {{agentName}}. Thank you for waiting. How may I assist you today?
+
+Important:
+If the customer has already explained their issue before the human agent joins, do not ask them to explain it again. Instead, acknowledge that you’ve read what they shared and continue assisting based on the existing conversation.`;
+
+  const existingGreetingIdx = aiWorkspaceStore.memories.findIndex(
+    m => m.title === greetingInstructionTitle || m.title?.includes('Dynamic Human Agent Greeting')
+  );
+
+  if (existingGreetingIdx >= 0) {
+    aiWorkspaceStore.memories[existingGreetingIdx].title = greetingInstructionTitle;
+    aiWorkspaceStore.memories[existingGreetingIdx].content = greetingInstructionContent;
+    aiWorkspaceStore.memories[existingGreetingIdx].category = 'Agent Guidelines';
+  } else {
+    aiWorkspaceStore.memories.unshift({
+      id: 'mem-dynamic-greeting-by-category',
+      title: greetingInstructionTitle,
+      category: 'Agent Guidelines',
+      version: 'v1.0',
+      createdBy: 'Administrator',
+      createdAt: new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
+      lastUpdated: new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
+      content: greetingInstructionContent,
+      isArchived: false,
+      priority: 'High',
+      applicableWorkflowStages: ['Payment Under Review', 'Verification Required', 'Compliance Review', 'Pending Approval', 'Payment Approved', 'Payment Released', 'Completed', 'Cancelled', 'Refund Verification']
+    });
+  }
+
   aiWorkspaceStore.memories.forEach((m: any, idx: number) => {
     if (!m.title) {
       m.title = m.category ? `${m.category} Procedure` : `Support Procedure #${idx + 1}`;
@@ -3253,11 +3324,10 @@ function generateHumanAgentGreeting(session: ChatSession, agentName: string): st
   const isHk = session.language === 'hk';
   const { hasExplained } = analyzeCustomerExplanation(session);
   const topic = session.selectedTopic || '';
+  const categoryType = getCategoryType(topic);
 
   if (!hasExplained) {
     // State A — Customer has NOT explained the issue
-    const categoryType = getCategoryType(topic);
-
     if (isHk) {
       switch (categoryType) {
         case 'transaction':
@@ -3297,18 +3367,38 @@ function generateHumanAgentGreeting(session: ChatSession, agentName: string): st
     }
   } else {
     // State B — Customer HAS already explained the issue
-    const categoryType = getCategoryType(topic);
-
     if (isHk) {
-      if (categoryType === 'transaction' || categoryType === 'payment' || categoryType === 'transfer') {
-        return `你好，我是 ${agentName}。感謝您的耐心等候。我已閱覽您之前的留言，現在正為您查詢您的交易個案。`;
+      switch (categoryType) {
+        case 'transaction':
+        case 'payment':
+        case 'transfer':
+          return `你好，我是 ${agentName}。感謝您的耐心等候。我已閱覽您之前的留言，現在正為您查詢您的交易個案。`;
+        case 'account':
+          return `你好，我是 ${agentName}。感謝您的耐心等候。我已審閱您提供的資料，現在正為您跟進您的賬戶個案。`;
+        case 'verification':
+          return `你好，我是 ${agentName}。感謝您的耐心等候。我已審閱您提供的驗證資料，現在正為您跟進處理。`;
+        case 'security':
+          return `你好，我是 ${agentName}。感謝您的耐心等候。我已審閱您提交的保安問題資料，現在正為您跟進處理。`;
+        default:
+          return `你好，我是 ${agentName}。感謝您的耐心等候。我已審閱您提供的資料，現在正為您跟進處理。`;
       }
-      return `你好，我是 ${agentName}。感謝您的耐心等候。我已審閱您提供的資料，現在正為您跟進處理。`;
     } else {
-      if (categoryType === 'transaction' || categoryType === 'payment' || categoryType === 'transfer') {
-        return `Hello, this is ${agentName}. Thank you for waiting. I’ve reviewed your previous messages and I’m now looking into your transaction.`;
+      switch (categoryType) {
+        case 'transaction':
+          return `Hello, this is ${agentName}. Thank you for waiting. I’ve reviewed your previous messages and I’m now looking into your transaction.`;
+        case 'payment':
+          return `Hello, this is ${agentName}. Thank you for waiting. I’ve reviewed your previous messages and I’m now looking into your payment.`;
+        case 'transfer':
+          return `Hello, this is ${agentName}. Thank you for waiting. I’ve reviewed your previous messages and I’m now looking into your transfer.`;
+        case 'account':
+          return `Hello, this is ${agentName}. Thank you for waiting. I’ve reviewed the details you’ve shared regarding your account, and I’m checking your case now.`;
+        case 'verification':
+          return `Hello, this is ${agentName}. Thank you for waiting. I’ve reviewed the details you’ve shared regarding verification, and I’m looking into this for you.`;
+        case 'security':
+          return `Hello, this is ${agentName}. Thank you for waiting. I’ve reviewed the security details you’ve provided, and I’m looking into this for you.`;
+        default:
+          return `Hello, this is ${agentName}. Thank you for waiting. I’ve reviewed the information you’ve shared, and I’m now looking into this for you.`;
       }
-      return `Hello, this is ${agentName}. Thank you for waiting. I’ve reviewed the information you’ve shared, and I’m now looking into this for you.`;
     }
   }
 }
