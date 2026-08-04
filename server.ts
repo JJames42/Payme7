@@ -86,7 +86,11 @@ async function translateUsingGoogleFree(text: string, sourceLang: string, target
   return null;
 }
 
-async function translateToHK(text: string): Promise<string> {
+async function translateToHK(text: string, customer?: any): Promise<string> {
+  const originalMessage = text;
+  if (customer && customer.language !== "hk") {
+    return originalMessage;
+  }
   if (!text || !text.trim()) return text;
 
   const cleanText = text.trim();
@@ -121,7 +125,9 @@ async function translateToHK(text: string): Promise<string> {
   // Exact match with lowercase check
   const exactKey = Object.keys(dictionary).find(k => k.toLowerCase() === cleanText.toLowerCase() || k.toLowerCase().replace(/[.,\/#!$%\^&\*;:{}=\-_`~()]/g, "").trim() === lowerClean);
   if (exactKey) {
-    console.log(`[Dictionary] Match found: "${cleanText}" -> "${dictionary[exactKey]}"`);
+    if (customer && customer.language === "hk") {
+      console.log(`[Dictionary] Match found: "${cleanText}" -> "${dictionary[exactKey]}"`);
+    }
     return dictionary[exactKey];
   }
 
@@ -216,7 +222,11 @@ ${text}`,
   return fallbackText;
 }
 
-async function translateToEN(text: string): Promise<string> {
+async function translateToEN(text: string, customer?: any): Promise<string> {
+  const originalMessage = text;
+  if (customer && customer.language !== "hk") {
+    return originalMessage;
+  }
   if (!text || !text.trim()) return text;
   const cleanText = text.trim();
 
@@ -246,7 +256,9 @@ async function translateToEN(text: string): Promise<string> {
 
   const exactKey = Object.keys(dictionary).find(k => k === cleanText);
   if (exactKey) {
-    console.log(`[Dictionary EN] Match found: "${cleanText}" -> "${dictionary[exactKey]}"`);
+    if (customer && customer.language === "hk") {
+      console.log(`[Dictionary EN] Match found: "${cleanText}" -> "${dictionary[exactKey]}"`);
+    }
     return dictionary[exactKey];
   }
 
@@ -336,9 +348,15 @@ async function addMessageToSession(
 ): Promise<Message> {
   const processedText = text || '';
   const hasChinese = /[\u4e00-\u9fa5]/.test(processedText);
+  const customer = session;
 
-  let translationEn = hasChinese ? '' : processedText;
-  let translationHk = hasChinese ? processedText : '';
+  let translationEn = processedText;
+  let translationHk = '';
+
+  if (customer.language === "hk") {
+    translationEn = hasChinese ? '' : processedText;
+    translationHk = hasChinese ? processedText : '';
+  }
 
   const newMessage: Message = {
     id: `msg-${Date.now()}-${Math.random().toString(36).substring(2, 5)}`,
@@ -356,27 +374,29 @@ async function addMessageToSession(
   session.messages.push(newMessage);
 
   // Perform translation asynchronously in background without blocking message presence
-  (async () => {
-    try {
-      if (sender === 'customer') {
-        if (hasChinese) {
-          newMessage.translationEn = await translateToEN(processedText);
-        } else {
-          newMessage.translationHk = await translateToHK(processedText);
+  if (customer.language === "hk") {
+    (async () => {
+      try {
+        if (sender === 'customer') {
+          if (hasChinese) {
+            newMessage.translationEn = await translateToEN(processedText, customer);
+          } else {
+            newMessage.translationHk = await translateToHK(processedText, customer);
+          }
+        } else if (sender !== 'system') {
+          if (hasChinese) {
+            newMessage.translationEn = await translateToEN(processedText, customer);
+            newMessage.translationHk = processedText;
+          } else {
+            newMessage.translationEn = processedText;
+            newMessage.translationHk = await translateToHK(processedText, customer);
+          }
         }
-      } else if (sender !== 'system') {
-        if (hasChinese) {
-          newMessage.translationEn = await translateToEN(processedText);
-          newMessage.translationHk = processedText;
-        } else {
-          newMessage.translationEn = processedText;
-          newMessage.translationHk = await translateToHK(processedText);
-        }
+      } catch (e: any) {
+        console.warn('[Background Translation Warning]:', e?.message || String(e));
       }
-    } catch (e: any) {
-      console.warn('[Background Translation Warning]:', e?.message || String(e));
-    }
-  })();
+    })();
+  }
 
   return newMessage;
 }
