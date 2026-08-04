@@ -1197,20 +1197,33 @@ if (!aiWorkspaceStore.memoryHistoryLogs || !Array.isArray(aiWorkspaceStore.memor
 
       // Perform initial background sync of master transactions to build and persist all 8 collections
       try {
-        const records = await replitExportService.fetchMasterTransactions();
-        if (records && records.length > 0) {
-          currentTransactionStore = replitExportService.buildTransactionStore(records);
-          saveDatabaseStateDebounced();
-          console.log('[Persistence] Transaction collections persisted to Neon PostgreSQL (local JSON snapshot updated):', {
-            masterTransactions: currentTransactionStore.masterTransactions.length,
-            exportRecords: currentTransactionStore.exportRecords.length,
-            emailRecords: currentTransactionStore.emailRecords.length,
-            sendHistory: currentTransactionStore.sendHistory.length,
-            transactionIndexes: Object.keys(currentTransactionStore.transactionIndexes).length,
-            workflowTimelines: currentTransactionStore.workflowTimelines.length,
-            exportSnapshots: currentTransactionStore.exportSnapshots.length,
-            emailEvents: currentTransactionStore.emailEvents.length
-          });
+        const apiUrl = process.env.TRANSACTION_EXPORT_API_URL || '';
+        const isOldReplitUrl = !apiUrl || apiUrl.includes('replit.app') || apiUrl.includes('andrewtates2027');
+
+        if (isOldReplitUrl) {
+          console.log('[Persistence] Old Replit endpoint startup sync skipped to avoid Replit HTML page. Initializing from Neon PostgreSQL or default persistent storage.');
+          if (!currentTransactionStore.masterTransactions || currentTransactionStore.masterTransactions.length === 0) {
+            const initialRecords = replitExportService.getDefaultInitialTransactions();
+            currentTransactionStore = replitExportService.buildTransactionStore(initialRecords);
+            saveDatabaseStateDebounced();
+          }
+        } else {
+          console.log('[Persistence] Custom sync endpoint configured, fetching master transactions...');
+          const records = await replitExportService.fetchMasterTransactions();
+          if (records && records.length > 0) {
+            currentTransactionStore = replitExportService.buildTransactionStore(records);
+            saveDatabaseStateDebounced();
+            console.log('[Persistence] Transaction collections persisted to Neon PostgreSQL (local JSON snapshot updated):', {
+              masterTransactions: currentTransactionStore.masterTransactions.length,
+              exportRecords: currentTransactionStore.exportRecords.length,
+              emailRecords: currentTransactionStore.emailRecords.length,
+              sendHistory: currentTransactionStore.sendHistory.length,
+              transactionIndexes: Object.keys(currentTransactionStore.transactionIndexes).length,
+              workflowTimelines: currentTransactionStore.workflowTimelines.length,
+              exportSnapshots: currentTransactionStore.exportSnapshots.length,
+              emailEvents: currentTransactionStore.emailEvents.length
+            });
+          }
         }
       } catch (txErr: any) {
         console.warn('[Persistence] Initial master transaction sync notice:', txErr?.message || String(txErr));

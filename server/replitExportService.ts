@@ -344,8 +344,21 @@ class ReplitExportService {
   async fetchMasterTransactions(): Promise<MasterTransactionRecord[]> {
     try {
       const baseUrl = this.getApiUrl();
-      const apiKey = this.getApiKey();
+      const isOldReplitUrl = !process.env.TRANSACTION_EXPORT_API_URL || 
+                             baseUrl.includes('replit.app') || 
+                             baseUrl.includes('andrewtates2027');
 
+      if (isOldReplitUrl) {
+        console.log('[Replit Export API] Old Replit endpoint ignored to avoid fetching Replit HTML page. Initializing from Neon PostgreSQL or default persistent storage.');
+        if (this.cachedStore?.masterTransactions?.length) {
+          return this.cachedStore.masterTransactions;
+        }
+        const initialRecords = this.getDefaultInitialTransactions();
+        this.buildTransactionStore(initialRecords);
+        return initialRecords;
+      }
+
+      const apiKey = this.getApiKey();
       const targetUrl = new URL('/api/transactions', baseUrl).toString();
 
       console.log(`[Replit Export API] Authenticating and fetching Master Transactions from: ${targetUrl}`);
@@ -373,8 +386,33 @@ class ReplitExportService {
         return initialRecords;
       }
 
-      const rawData: any[] = await res.json();
+      const contentType = res.headers.get('content-type') || '';
+      if (!contentType.includes('application/json')) {
+        console.error(`[Replit Export API Error] Expected JSON but received Content-Type: ${contentType}`);
+        if (this.cachedStore?.masterTransactions?.length) {
+          return this.cachedStore.masterTransactions;
+        }
+        const initialRecords = this.getDefaultInitialTransactions();
+        this.buildTransactionStore(initialRecords);
+        return initialRecords;
+      }
+
+      const text = await res.text();
+      let rawData: any[];
+      try {
+        rawData = JSON.parse(text);
+      } catch (parseErr) {
+        console.error('[Replit Export API Error] Failed to parse response text as JSON:', parseErr);
+        if (this.cachedStore?.masterTransactions?.length) {
+          return this.cachedStore.masterTransactions;
+        }
+        const initialRecords = this.getDefaultInitialTransactions();
+        this.buildTransactionStore(initialRecords);
+        return initialRecords;
+      }
+
       if (!Array.isArray(rawData)) {
+        console.error('[Replit Export API Error] Parsed JSON is not an array.');
         if (this.cachedStore?.masterTransactions?.length) {
           return this.cachedStore.masterTransactions;
         }
