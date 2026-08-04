@@ -762,7 +762,7 @@ export default function LiveChat({ onBackToHome, sessionId: propSessionId }: Liv
       }
     };
     fetchAgents();
-    const interval = setInterval(fetchAgents, 1000);
+    const interval = setInterval(fetchAgents, 10000);
     return () => clearInterval(interval);
   }, []);
 
@@ -1435,11 +1435,35 @@ Description: ${formDesc.trim() || 'None Provided'}`;
     initChat();
   }, [propSessionId]);
 
-  // Real-time synchronization polling (1s interval)
+  // Adaptive polling helper
+  const getNextPollingDelay = (currentSession: any) => {
+    if (document.hidden) {
+      return 25000; // 25 seconds if tab is backgrounded
+    }
+
+    const msgs = currentSession?.messages || [];
+    if (msgs.length === 0) return 5000;
+
+    const lastMsg = msgs[msgs.length - 1];
+    const lastMsgTime = lastMsg?.timestamp ? new Date(lastMsg.timestamp).getTime() : 0;
+    const timeSinceLastMsg = Date.now() - lastMsgTime;
+
+    // Active conversation: last message is < 45 seconds old
+    const isRecentlyActive = timeSinceLastMsg < 45000;
+
+    if (isRecentlyActive) {
+      return 5000; // 5 seconds
+    }
+    return 15000; // 15 seconds when idle
+  };
+
+  // Real-time synchronization polling (Adaptive timeout)
   useEffect(() => {
     if (!session) return;
 
-    const interval = setInterval(async () => {
+    let timeoutId: any = null;
+
+    const poll = async () => {
       try {
         const vInfo = collectVisitorInfo();
         const res = await fetch('/api/chats/create', {
@@ -1449,42 +1473,63 @@ Description: ${formDesc.trim() || 'None Provided'}`;
             id: session.id,
             language: customerLanguage,
             visitorInfo: vInfo,
-            connectionStatus
+            connectionStatus,
+            knownVersion: (session as any).version
           })
         });
+        
+        let nextDelay = 5000;
+        
         if (res.ok) {
-          const data: ChatSession = await res.json();
+          const data: any = await res.json();
           if (data.isDeleted) {
             localStorage.removeItem('payme_chat_session_id');
             setSession(null);
             setBotStep(0);
             return;
           }
-          setSession((prev) => {
-            if (!prev) return data;
-            const serverMsgIds = new Set(data.messages.map(m => m.id));
-            const pendingOptimistic = prev.messages.filter(m => !serverMsgIds.has(m.id) && m.sender === 'customer');
-            if (pendingOptimistic.length > 0) {
-              return {
-                ...data,
-                messages: [...data.messages, ...pendingOptimistic]
-              };
+
+          if (data.unmodified) {
+            nextDelay = getNextPollingDelay(session);
+          } else {
+            setSession((prev) => {
+              if (!prev) return data;
+              const serverMsgIds = new Set(data.messages.map((m: any) => m.id));
+              const pendingOptimistic = prev.messages.filter(m => !serverMsgIds.has(m.id) && m.sender === 'customer');
+              if (pendingOptimistic.length > 0) {
+                return {
+                  ...data,
+                  messages: [...data.messages, ...pendingOptimistic]
+                };
+              }
+              return data;
+            });
+            
+            // Sync bot steps with server state
+            if (data.status === 'pending') {
+              setBotStep(4);
             }
-            return data;
-          });
-          
-          // Sync bot steps with server state
-          if (data.status === 'pending') {
-            setBotStep(4);
+            nextDelay = getNextPollingDelay(data);
           }
+        } else {
+          nextDelay = 10000; // Slow down on error
         }
+
+        timeoutId = setTimeout(poll, nextDelay);
       } catch (err) {
         console.warn('Real-time synchronization failure:', err);
+        timeoutId = setTimeout(poll, 10000); // Retry after 10s on network error
       }
-    }, 1000);
+    };
 
-    return () => clearInterval(interval);
-  }, [session?.id, customerLanguage, connectionStatus]);
+    // Schedule first poll
+    const delay = getNextPollingDelay(session);
+    timeoutId = setTimeout(poll, delay);
+
+    return () => {
+      if (timeoutId) clearTimeout(timeoutId);
+    };
+  }, [session?.id, (session as any)?.version, customerLanguage, connectionStatus]);
 
   // Auto-resize the chat textarea height
   useEffect(() => {

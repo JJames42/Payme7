@@ -1,5 +1,6 @@
 import express from 'express';
 import path from 'path';
+import compression from 'compression';
 import fs from 'fs';
 import { createServer as createViteServer } from 'vite';
 import { GoogleGenAI } from '@google/genai';
@@ -357,6 +358,9 @@ async function addMessageToSession(
 
 const app = express();
 const PORT = 3000;
+
+// Enable gzip compression for HTTP responses
+app.use(compression());
 
 // Middleware for JSON body parsing with large limit for base64 attachments
 app.use(express.json({ limit: '20mb' }));
@@ -977,7 +981,6 @@ function savePresenceToDisk() {
       activeAdminChatId,
       agentLastActiveMap
     }), 'utf8');
-    saveDatabaseStateDebounced();
   } catch (err) {
     console.error('[Persistence] Error saving presence state:', err);
   }
@@ -1035,7 +1038,6 @@ function getFormattedLastSeen(timestamp: number): string {
 function saveSessionsToDisk() {
   try {
     fs.writeFileSync(SESSIONS_FILE, JSON.stringify(chatSessions, null, 2), 'utf8');
-    saveDatabaseStateDebounced();
   } catch (err) {
     console.error('[Persistence] Error saving chat sessions to disk:', err);
   }
@@ -1091,9 +1093,24 @@ loadSessionsFromDisk();
 loadPresenceFromDisk();
 
 let saveDbDebounceTimer: NodeJS.Timeout | null = null;
+let lastSavedFunctionalStateKey: string = '';
+
+function getFunctionalStateKey(): string {
+  const msgCounts = chatSessions.map(s => `${s.id}:${s.messages.length}:${s.status}:${s.rating || ''}:${s.selectedTopic || ''}`).join('|');
+  const txCount = currentTransactionStore.masterTransactions.length;
+  const memCount = (aiWorkspaceStore.memories || []).length;
+  const delCount = deletedChatIds.size;
+  return `${msgCounts}#tx:${txCount}#mem:${memCount}#del:${delCount}`;
+}
+
 function saveDatabaseStateDebounced() {
   if (saveDbDebounceTimer) clearTimeout(saveDbDebounceTimer);
   saveDbDebounceTimer = setTimeout(() => {
+    const currentStateKey = getFunctionalStateKey();
+    if (currentStateKey === lastSavedFunctionalStateKey && lastSavedFunctionalStateKey !== '') {
+      return; // Skip database write if functional state has not changed
+    }
+
     const adminSessionsObj: Record<string, AdminSessionRecord> = {};
     activeAdminSessions.forEach((sess, tok) => {
       adminSessionsObj[tok] = sess;
@@ -1114,8 +1131,9 @@ function saveDatabaseStateDebounced() {
       },
       transactionStore: currentTransactionStore
     };
+    lastSavedFunctionalStateKey = currentStateKey;
     saveFullStateToDatabase(fullState);
-  }, 500);
+  }, 2000);
 }
 
 // Initialize AI Workspace Store from persistent database storage
@@ -1329,7 +1347,7 @@ app.get('/api/chats', pollingRateLimiter, requireAdminAuth, (req, res) => {
     if (lastPoll > 0) {
       if (diffMs < 12000) {
         session.customerOnline = true;
-        session.connectionStatus = 'Connected';
+        session.connectionStatus = session.connectionStatus || 'Connected';
       } else if (diffMs < 30000) {
         session.customerOnline = true;
         session.connectionStatus = 'Reconnecting';
@@ -3044,7 +3062,17 @@ app.post('/api/chats/create', sessionCreateRateLimiter, (req, res) => {
     }
   }
   
-  res.json(session);
+  // Calculate state signature for bandwidth optimization
+  const messageStatuses = session.messages.map(m => `${m.id}:${m.status || ''}`).join('|');
+  const rawSig = `${session.messages.length}-${session.status}-${session.agentTyping ? 'y' : 'n'}-${session.isClosed ? 'y' : 'n'}-${session.isLocked ? 'y' : 'n'}-${session.isBlocked ? 'y' : 'n'}-${session.paymentConfig?.status || ''}-${session.language || 'en'}-${session.timelineProgress || 1}-${session.uploadsMuted ? 'y' : 'n'}-${session.actionsRequiredEnabled ? 'y' : 'n'}-${messageStatuses}`;
+  const stateSig = crypto.createHash('md5').update(rawSig).digest('hex');
+
+  const clientKnownVersion = req.body.knownVersion;
+  if (clientKnownVersion && clientKnownVersion === stateSig) {
+    return res.json({ unmodified: true, version: stateSig });
+  }
+
+  res.json({ ...session, version: stateSig });
 });
 
 // Update Visitor Info Endpoint
@@ -4157,9 +4185,18 @@ async function startServer() {
       }
     });
   } else {
-    // Serve production static assets
+    // Serve production static assets with high-performance Cache-Control headers
     const distPath = path.join(process.cwd(), 'dist');
-    app.use(express.static(distPath));
+    app.use(express.static(distPath, {
+      maxAge: '1y',
+      setHeaders: (res, filePath) => {
+        if (filePath.endsWith('.html')) {
+          res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+        } else {
+          res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+        }
+      }
+    }));
     app.get('*', (req, res) => {
       res.sendFile(path.join(distPath, 'index.html'));
     });

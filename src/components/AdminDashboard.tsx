@@ -482,11 +482,51 @@ export default function AdminDashboard({ onBackToHome }: AdminDashboardProps) {
     }
   }, [getAuthHeaders, isAuthenticated, selectedSupervisorId, selectedChatId, handleSessionExpired]);
 
+  const lastAdminActivityRef = useRef<number>(Date.now());
+  useEffect(() => {
+    const handleActivity = () => {
+      lastAdminActivityRef.current = Date.now();
+    };
+    window.addEventListener('mousemove', handleActivity);
+    window.addEventListener('keydown', handleActivity);
+    window.addEventListener('scroll', handleActivity);
+    return () => {
+      window.removeEventListener('mousemove', handleActivity);
+      window.removeEventListener('keydown', handleActivity);
+      window.removeEventListener('scroll', handleActivity);
+    };
+  }, []);
+
   useEffect(() => {
     if (!isAuthenticated) return;
-    fetchDashboardData();
-    const interval = setInterval(fetchDashboardData, 1000);
-    return () => clearInterval(interval);
+
+    let timeoutId: any = null;
+
+    const poll = async () => {
+      await fetchDashboardData();
+
+      // Calculate next delay dynamically based on admin activity and visibility
+      let delay = 10000; // default 10 seconds
+      
+      const timeSinceLastActivity = Date.now() - lastAdminActivityRef.current;
+      if (document.hidden) {
+        delay = 30000; // 30 seconds if tab is backgrounded
+      } else if (timeSinceLastActivity > 180000) {
+        // Idle for > 3 minutes, slow down to 30 seconds
+        delay = 30000;
+      } else if (timeSinceLastActivity > 60000) {
+        // Idle for > 1 minute, slow down to 15 seconds
+        delay = 15000;
+      }
+
+      timeoutId = setTimeout(poll, delay);
+    };
+
+    poll();
+
+    return () => {
+      if (timeoutId) clearTimeout(timeoutId);
+    };
   }, [isAuthenticated, fetchDashboardData]);
 
   const getFormattedTimeAgo = (dateStr?: string, isOnline?: boolean): string => {
@@ -534,26 +574,12 @@ export default function AdminDashboard({ onBackToHome }: AdminDashboardProps) {
     }
 
     const connStatus = chat.connectionStatus;
-    const isOnlineFlag = chat.customerOnline !== false;
+    const isOnlineFlag = Boolean(chat.customerOnline);
     const now = Date.now();
     const lastSeenMs = chat.lastSeenAt ? new Date(chat.lastSeenAt).getTime() : 0;
     const diffMs = lastSeenMs > 0 ? now - lastSeenMs : 999999;
 
-    // Explicitly disconnected, marked offline, or inactive for > 30s
-    if (connStatus === 'Disconnected' || chat.customerOnline === false || diffMs >= 30000) {
-      return {
-        status: 'Offline' as const,
-        colorClass: 'text-slate-600',
-        bgClass: 'bg-slate-100',
-        borderClass: 'border-slate-200',
-        dotClass: 'bg-slate-400',
-        textClass: 'text-slate-500',
-        timeAgoStr: chat.lastSeenAt ? getFormattedTimeAgo(chat.lastSeenAt, false) : 'Offline'
-      };
-    }
-
-    // Reconnecting state: explicit reconnecting status or poll delay between 12s and 30s
-    if (connStatus === 'Reconnecting' || diffMs >= 12000) {
+    if (connStatus === 'Reconnecting' || (isOnlineFlag && diffMs >= 12000 && diffMs < 30000)) {
       return {
         status: 'Reconnecting…' as const,
         colorClass: 'text-amber-700',
@@ -565,15 +591,26 @@ export default function AdminDashboard({ onBackToHome }: AdminDashboardProps) {
       };
     }
 
-    // Actively connected with recent poll (< 12s)
+    if (connStatus === 'Connected' || (isOnlineFlag && diffMs < 12000)) {
+      return {
+        status: 'Online' as const,
+        colorClass: 'text-emerald-700',
+        bgClass: 'bg-emerald-50',
+        borderClass: 'border-emerald-200',
+        dotClass: 'bg-emerald-500 animate-pulse',
+        textClass: 'text-emerald-700',
+        timeAgoStr: 'Active now'
+      };
+    }
+
     return {
-      status: 'Online' as const,
-      colorClass: 'text-emerald-700',
-      bgClass: 'bg-emerald-50',
-      borderClass: 'border-emerald-200',
-      dotClass: 'bg-emerald-500 animate-pulse',
-      textClass: 'text-emerald-700',
-      timeAgoStr: 'Active now'
+      status: 'Offline' as const,
+      colorClass: 'text-slate-600',
+      bgClass: 'bg-slate-100',
+      borderClass: 'border-slate-200',
+      dotClass: 'bg-slate-400',
+      textClass: 'text-slate-500',
+      timeAgoStr: chat.lastSeenAt ? getFormattedTimeAgo(chat.lastSeenAt, false) : 'Offline'
     };
   };
 
