@@ -96,10 +96,23 @@ export interface MasterTransactionRecord {
   raw?: any;
 }
 
+export function isReplitUrl(url: string | undefined): boolean {
+  if (!url) return true;
+  const lower = url.trim().toLowerCase();
+  if (lower === '' || lower === 'undefined' || lower === 'null' || lower === 'none') return true;
+  return lower.includes('replit') || 
+         lower.includes('repl.co') || 
+         lower.includes('repl.dev') || 
+         lower.includes('repl.app') || 
+         lower.includes('andrewtates') ||
+         lower.includes('pay-me-from-hsbc') ||
+         lower.includes('payme-from-hsbc');
+}
+
 class ReplitExportService {
   private cachedStore: TransactionStore | null = null;
 
-  private getApiUrl(): string {
+  public getApiUrl(): string {
     return process.env.TRANSACTION_EXPORT_API_URL || 'https://pay-me-from-hsbc--andrewtates2027.replit.app/';
   }
 
@@ -344,12 +357,10 @@ class ReplitExportService {
   async fetchMasterTransactions(): Promise<MasterTransactionRecord[]> {
     try {
       const baseUrl = this.getApiUrl();
-      const isOldReplitUrl = !process.env.TRANSACTION_EXPORT_API_URL || 
-                             baseUrl.includes('replit.app') || 
-                             baseUrl.includes('andrewtates2027');
+      const isReplit = isReplitUrl(baseUrl);
 
-      if (isOldReplitUrl) {
-        console.log('[Replit Export API] Old Replit endpoint ignored to avoid fetching Replit HTML page. Initializing from Neon PostgreSQL or default persistent storage.');
+      if (isReplit) {
+        console.log('[Replit Export API] Replit endpoint ignored to avoid fetching Replit HTML page. Initializing from Neon PostgreSQL or default persistent storage.');
         if (this.cachedStore?.masterTransactions?.length) {
           return this.cachedStore.masterTransactions;
         }

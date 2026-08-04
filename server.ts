@@ -7,7 +7,7 @@ import { GoogleGenAI } from '@google/genai';
 import dotenv from 'dotenv';
 import crypto from 'crypto';
 import { aiManager } from './server/ai/AIManager.js';
-import { replitExportService } from './server/replitExportService.js';
+import { replitExportService, isReplitUrl } from './server/replitExportService.js';
 import {
   loadFullStateFromDatabase,
   loadFullStateFromDatabaseSync,
@@ -21,6 +21,31 @@ import {
 
 // Configure dotenv to parse variables from the environment/secrets
 dotenv.config();
+
+// --- Startup Configuration & Environment Diagnostics ---
+function getSafeDatabaseUrlLog(url: string | undefined): string {
+  if (!url || !url.trim()) return 'Not configured / Using local storage fallback';
+  try {
+    const parsed = new URL(url);
+    return `${parsed.protocol}//${parsed.username ? parsed.username + ':****' : ''}@${parsed.host}${parsed.pathname}`;
+  } catch {
+    return 'Masked URL (Invalid structure or hidden)';
+  }
+}
+
+const rawApiUrl = process.env.TRANSACTION_EXPORT_API_URL;
+const resolvedApiUrl = replitExportService.getApiUrl();
+
+console.log('========================================================================');
+console.log('[Startup Configuration & Environment Diagnostics]');
+console.log(`- NODE_ENV: ${process.env.NODE_ENV || 'development'}`);
+console.log(`- PORT: ${process.env.PORT || '3000'}`);
+console.log(`- DATABASE_URL: ${getSafeDatabaseUrlLog(process.env.DATABASE_URL)}`);
+console.log(`- TRANSACTION_EXPORT_API_URL (env): ${rawApiUrl || 'NOT_DEFINED'}`);
+console.log(`- Resolved Transaction API URL: ${resolvedApiUrl}`);
+console.log(`- GEMINI_API_KEY: ${process.env.GEMINI_API_KEY ? 'Present (configured)' : 'NOT_DEFINED'}`);
+console.log(`- EXPORT_API_KEY: ${process.env.EXPORT_API_KEY ? 'Present (configured)' : 'NOT_DEFINED'}`);
+console.log('========================================================================');
 
 // --- Gemini API Translation Setup ---
 let aiClient: GoogleGenAI | null = null;
@@ -1195,20 +1220,21 @@ if (!aiWorkspaceStore.memoryHistoryLogs || !Array.isArray(aiWorkspaceStore.memor
       }
       console.log('[Persistence] Database state initialized successfully.');
 
+      // Startup sync configuration check (diagnostics are logged at process start)
+
       // Perform initial background sync of master transactions to build and persist all 8 collections
       try {
-        const apiUrl = process.env.TRANSACTION_EXPORT_API_URL || '';
-        const isOldReplitUrl = !apiUrl || apiUrl.includes('replit.app') || apiUrl.includes('andrewtates2027');
+        const isReplit = isReplitUrl(resolvedApiUrl) || (rawApiUrl ? isReplitUrl(rawApiUrl) : false);
 
-        if (isOldReplitUrl) {
-          console.log('[Persistence] Old Replit endpoint startup sync skipped to avoid Replit HTML page. Initializing from Neon PostgreSQL or default persistent storage.');
+        if (isReplit) {
+          console.log('[Persistence] Startup sync with Replit endpoint bypassed completely to prevent contacting Replit. Initializing exclusively from Neon PostgreSQL or default persistent storage.');
           if (!currentTransactionStore.masterTransactions || currentTransactionStore.masterTransactions.length === 0) {
             const initialRecords = replitExportService.getDefaultInitialTransactions();
             currentTransactionStore = replitExportService.buildTransactionStore(initialRecords);
             saveDatabaseStateDebounced();
           }
         } else {
-          console.log('[Persistence] Custom sync endpoint configured, fetching master transactions...');
+          console.log(`[Persistence] Custom non-Replit sync endpoint configured (${resolvedApiUrl}), fetching master transactions...`);
           const records = await replitExportService.fetchMasterTransactions();
           if (records && records.length > 0) {
             currentTransactionStore = replitExportService.buildTransactionStore(records);
