@@ -223,10 +223,6 @@ ${text}`,
 }
 
 async function translateToEN(text: string, customer?: any): Promise<string> {
-  const originalMessage = text;
-  if (customer && customer.language !== "hk") {
-    return originalMessage;
-  }
   if (!text || !text.trim()) return text;
   const cleanText = text.trim();
 
@@ -353,9 +349,25 @@ async function addMessageToSession(
   let translationEn = processedText;
   let translationHk = '';
 
-  if (customer.language === "hk") {
-    translationEn = hasChinese ? '' : processedText;
-    translationHk = hasChinese ? processedText : '';
+  if (sender === 'customer') {
+    if (hasChinese) {
+      // Customer wrote in HK/Chinese. Initial translationEn is empty (filled in background), translationHk is original text.
+      translationEn = '';
+      translationHk = processedText;
+    } else {
+      // Customer wrote in English (ASCII/Latin). Completely bypass translation.
+      translationEn = processedText;
+      translationHk = '';
+    }
+  } else {
+    // Agent / Bot / System messages (Agent -> Customer)
+    if (customer.language === 'hk') {
+      translationEn = hasChinese ? '' : processedText;
+      translationHk = hasChinese ? processedText : '';
+    } else {
+      translationEn = processedText;
+      translationHk = '';
+    }
   }
 
   const newMessage: Message = {
@@ -374,16 +386,23 @@ async function addMessageToSession(
   session.messages.push(newMessage);
 
   // Perform translation asynchronously in background without blocking message presence
-  if (customer.language === "hk") {
-    (async () => {
-      try {
-        if (sender === 'customer') {
-          if (hasChinese) {
-            newMessage.translationEn = await translateToEN(processedText, customer);
-          } else {
-            newMessage.translationHk = await translateToHK(processedText, customer);
-          }
-        } else if (sender !== 'system') {
+  if (sender === 'customer') {
+    if (hasChinese) {
+      // Customer types HK/Chinese -> Translate HK to English for agent dashboard.
+      (async () => {
+        try {
+          newMessage.translationEn = await translateToEN(processedText, customer);
+        } catch (e: any) {
+          console.warn('[Background Customer Translation Warning]:', e?.message || String(e));
+        }
+      })();
+    }
+    // If NOT hasChinese, completely bypass background translation jobs and logging.
+  } else if (sender !== 'system') {
+    // Agent / Bot messages (Agent -> Customer)
+    if (customer.language === 'hk') {
+      (async () => {
+        try {
           if (hasChinese) {
             newMessage.translationEn = await translateToEN(processedText, customer);
             newMessage.translationHk = processedText;
@@ -391,11 +410,11 @@ async function addMessageToSession(
             newMessage.translationEn = processedText;
             newMessage.translationHk = await translateToHK(processedText, customer);
           }
+        } catch (e: any) {
+          console.warn('[Background Agent Translation Warning]:', e?.message || String(e));
         }
-      } catch (e: any) {
-        console.warn('[Background Translation Warning]:', e?.message || String(e));
-      }
-    })();
+      })();
+    }
   }
 
   return newMessage;

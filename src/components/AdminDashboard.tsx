@@ -3089,6 +3089,13 @@ export default function AdminDashboard({ onBackToHome }: AdminDashboardProps) {
                           }`}>
                             <p className="whitespace-pre-line font-medium">{msg.text}</p>
                             
+                            {!isAgent && msg.translationEn && msg.translationEn !== msg.text && (
+                              <div className="mt-2 pt-2 border-t border-slate-200/60 text-[11px] text-slate-500 italic flex flex-col gap-0.5">
+                                <span className="text-[9px] uppercase font-bold tracking-wider text-slate-400 not-italic">Translated to English</span>
+                                <span>{msg.translationEn}</span>
+                              </div>
+                            )}
+                            
                             {/* Audio attachment if present */}
                             {msg.attachment && msg.attachment.type.startsWith('audio/') && (
                               <div className="mt-2 bg-white/80 p-2 rounded-xl border border-rose-200 flex items-center gap-2 text-slate-800">
