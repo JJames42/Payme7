@@ -11,7 +11,10 @@ export class GeminiProvider implements AIProvider {
 
   private getClient(): GoogleGenAI {
     if (!this.client && process.env.GEMINI_API_KEY) {
-      this.client = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+      this.client = new GoogleGenAI({ 
+        apiKey: process.env.GEMINI_API_KEY,
+        vertexai: false
+      });
     }
     if (!this.client) {
       throw new Error("GEMINI_API_KEY is not set");
