@@ -3,6 +3,7 @@ export interface Attachment {
   type: string;
   data: string; // Base64 data URL
   duration?: number; // for voice recordings
+  isOptimized?: boolean;
 }
 
 export interface Message {

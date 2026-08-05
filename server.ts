@@ -8,6 +8,7 @@ import dotenv from 'dotenv';
 import crypto from 'crypto';
 import { aiManager } from './server/ai/AIManager.js';
 import { replitExportService, isReplitUrl } from './server/replitExportService.js';
+import { optimizeAttachment } from './server/utils/compression.js';
 import {
   loadFullStateFromDatabase,
   loadFullStateFromDatabaseSync,
@@ -649,17 +650,43 @@ function sanitizeNumber(input: any, min = 0, max = 100000000, defaultVal = 0): n
   return Math.max(min, Math.min(max, num));
 }
 
+function parseCookies(cookieHeader: string | undefined): Record<string, string> {
+  const cookies: Record<string, string> = {};
+  if (!cookieHeader) return cookies;
+  cookieHeader.split(';').forEach(cookie => {
+    const parts = cookie.split('=');
+    if (parts.length >= 2) {
+      const name = parts[0].trim();
+      const val = parts.slice(1).join('=').trim();
+      cookies[name] = val;
+    }
+  });
+  return cookies;
+}
+
 function validateAttachmentPayload(attachment: any): Attachment | undefined {
   if (!attachment || typeof attachment !== 'object') return undefined;
   const name = sanitizeString(attachment.name, 255);
-  const type = sanitizeString(attachment.type, 100);
-  const data = typeof attachment.data === 'string' ? attachment.data : '';
+  let type = sanitizeString(attachment.type, 100);
+  let data = typeof attachment.data === 'string' ? attachment.data : '';
+  if (!data && typeof attachment.url === 'string') {
+    data = attachment.url;
+  }
+
+  // Map simple types from admin dashboard to standard mime types
+  const lowerType = type.toLowerCase();
+  if (lowerType === 'audio') type = 'audio/webm';
+  else if (lowerType === 'image') type = 'image/png';
+  else if (lowerType === 'pdf') type = 'application/pdf';
+  else if (lowerType === 'doc') type = 'application/msword';
 
   if (!name || !type || !data) return undefined;
 
   const allowedTypes = [
     'image/png', 'image/jpeg', 'image/jpg', 'image/webp', 'image/gif',
-    'application/pdf', 'audio/webm', 'audio/wav', 'audio/mp3', 'audio/ogg', 'audio/m4a'
+    'application/pdf', 'audio/webm', 'audio/wav', 'audio/mp3', 'audio/ogg', 'audio/m4a', 'audio/mp4',
+    'video/mp4', 'video/quicktime', 'video/webm', 'video/x-matroska', 'video/avi', 'video/mpeg',
+    'application/msword'
   ];
 
   if (!allowedTypes.includes(type.toLowerCase())) {
@@ -675,7 +702,8 @@ function validateAttachmentPayload(attachment: any): Attachment | undefined {
     name,
     type,
     data,
-    duration: attachment.duration ? sanitizeNumber(attachment.duration, 0, 3600, 0) : undefined
+    duration: attachment.duration ? sanitizeNumber(attachment.duration, 0, 3600, 0) : undefined,
+    isOptimized: typeof attachment.isOptimized === 'boolean' ? attachment.isOptimized : undefined
   };
 }
 
@@ -768,6 +796,12 @@ app.post('/api/admin/login', (req, res) => {
     recordSuccessfulLogin(ip);
     const token = createAdminSession(ip);
     securityLog('ADMIN_LOGIN_SUCCESS', { employeeId }, req);
+    res.cookie('admin_session_token', token, {
+      path: '/',
+      httpOnly: true,
+      secure: req.secure || req.headers['x-forwarded-proto'] === 'https',
+      sameSite: 'lax'
+    });
     return res.json({
       success: true,
       token,
@@ -792,6 +826,14 @@ app.get('/api/admin/verify-session', pollingRateLimiter, (req, res) => {
   }
 
   const isValid = validateAdminToken(token);
+  if (isValid && token) {
+    res.cookie('admin_session_token', token, {
+      path: '/',
+      httpOnly: true,
+      secure: req.secure || req.headers['x-forwarded-proto'] === 'https',
+      sameSite: 'lax'
+    });
+  }
   res.json({ valid: isValid });
 });
 
@@ -863,6 +905,7 @@ interface Attachment {
   type: string;
   data: string; // Base64 data URL
   duration?: number;
+  isOptimized?: boolean;
 }
 
 interface Message {
@@ -1100,11 +1143,16 @@ function getFormattedLastSeen(timestamp: number): string {
   return `Active ${diffHr}h ago`;
 }
 
+let isSavingDatabaseState = false;
+
 function saveSessionsToDisk() {
+  isSavingDatabaseState = true;
   try {
     fs.writeFileSync(SESSIONS_FILE, JSON.stringify(chatSessions, null, 2), 'utf8');
   } catch (err) {
     console.error('[Persistence] Error saving chat sessions to disk:', err);
+  } finally {
+    isSavingDatabaseState = false;
   }
 }
 
@@ -1197,7 +1245,10 @@ function saveDatabaseStateDebounced() {
       transactionStore: currentTransactionStore
     };
     lastSavedFunctionalStateKey = currentStateKey;
-    saveFullStateToDatabase(fullState);
+    isSavingDatabaseState = true;
+    saveFullStateToDatabase(fullState).finally(() => {
+      isSavingDatabaseState = false;
+    });
   }, 2000);
 }
 
@@ -3146,6 +3197,13 @@ app.post('/api/chats/create', sessionCreateRateLimiter, (req, res) => {
   const rawSig = `${session.messages.length}-${session.status}-${session.agentTyping ? 'y' : 'n'}-${session.isClosed ? 'y' : 'n'}-${session.isLocked ? 'y' : 'n'}-${session.isBlocked ? 'y' : 'n'}-${session.paymentConfig?.status || ''}-${session.language || 'en'}-${session.timelineProgress || 1}-${session.uploadsMuted ? 'y' : 'n'}-${session.actionsRequiredEnabled ? 'y' : 'n'}-${messageStatuses}`;
   const stateSig = crypto.createHash('md5').update(rawSig).digest('hex');
 
+  res.cookie('chat_session_id', session.id, {
+    path: '/',
+    httpOnly: true,
+    secure: req.secure || req.headers['x-forwarded-proto'] === 'https',
+    sameSite: 'lax'
+  });
+
   const clientKnownVersion = req.body.knownVersion;
   if (clientKnownVersion && clientKnownVersion === stateSig) {
     return res.json({ unmodified: true, version: stateSig });
@@ -3173,7 +3231,186 @@ app.post('/api/chats/:id/visitor-info', presenceRateLimiter, (req, res) => {
 
   session.visitorInfo = enrichVisitorInfo(session.visitorInfo, visitorInfo, callerIp, session.createdAt);
 
+  res.cookie('chat_session_id', session.id, {
+    path: '/',
+    httpOnly: true,
+    secure: req.secure || req.headers['x-forwarded-proto'] === 'https',
+    sameSite: 'lax'
+  });
+
   res.json(session);
+});
+
+// ----------------------------------------------------
+// Streamed & Cached Attachment Retrieval Endpoints
+// ----------------------------------------------------
+
+// Endpoint to stream optimized attachment files with range support and long-lived client-side caching
+app.get('/api/attachments/:hash/:filename?', (req, res) => {
+  const { hash } = req.params;
+  const uploadsDir = path.join(process.cwd(), 'uploads');
+  const filePath = path.join(uploadsDir, hash);
+  const metaPath = path.join(uploadsDir, `${hash}.json`);
+
+  if (!fs.existsSync(filePath)) {
+    return res.status(404).json({ error: 'Attachment not found' });
+  }
+
+  // Parse cookies and validation headers/params
+  const cookies = parseCookies(req.headers.cookie);
+  const adminToken = cookies['admin_session_token'] || (req.headers['x-admin-token'] as string) || (req.query?.adminToken as string);
+  const chatSessionId = cookies['chat_session_id'] || (req.headers['x-chat-session-id'] as string) || (req.query?.sessionId as string) || (req.query?.chatId as string);
+
+  // Parse Referer as fallback for iframe standard elements
+  let refSessionId = '';
+  const referer = req.headers.referer;
+  if (referer) {
+    const refMatch = referer.match(/[?&](id|sessionId|chatId)=([a-f0-9-]+)/i) || referer.match(/\/chat\/([a-f0-9-]+)/i);
+    if (refMatch) {
+      refSessionId = refMatch[2];
+    }
+  }
+
+  let isAuthorized = false;
+
+  // Case 1: Check if the request is from a validated admin session
+  if (validateAdminToken(adminToken)) {
+    isAuthorized = true;
+  }
+  // Case 2: Check if the user is authorized for the specific chat session referencing this hash
+  else {
+    const finalSessionId = chatSessionId || refSessionId;
+    if (finalSessionId) {
+      const session = chatSessions.find(s => s.id === finalSessionId);
+      if (session) {
+        // Confirm that the attachment is indeed part of this conversation
+        const hasHash = session.messages.some(m => m.attachment && m.attachment.data && m.attachment.data.includes(hash));
+        if (hasHash) {
+          isAuthorized = true;
+        }
+      }
+    }
+  }
+
+  // Case 3: Admin fallback for standard media elements rendering inside admin dashboard view
+  if (!isAuthorized && referer && referer.includes('/admin')) {
+    const now = Date.now();
+    if (now - lastAdminHeartbeatTime < 300000) { // Active admin heartbeat within 5 minutes
+      isAuthorized = true;
+    }
+  }
+
+  if (!isAuthorized) {
+    console.warn(`[Security Alert] Unauthorized attachment access attempt to hash "${hash}" from IP: ${req.ip}`);
+    return res.status(403).json({ error: 'Forbidden. You do not have permission to view this attachment.' });
+  }
+
+  let mimeType = 'application/octet-stream';
+  let originalName = 'file';
+
+  if (fs.existsSync(metaPath)) {
+    try {
+      const meta = JSON.parse(fs.readFileSync(metaPath, 'utf8'));
+      mimeType = meta.type || mimeType;
+      originalName = meta.name || originalName;
+    } catch (err) {
+      console.warn('[Attachment Route] Failed to parse metadata:', err);
+    }
+  }
+
+  // Set standard headers for caching (private so shared CDN/caches don't index private conversations)
+  res.setHeader('Content-Type', mimeType);
+  res.setHeader('Cache-Control', 'private, max-age=31536000, immutable');
+
+  // Stream file using res.sendFile (automatically supports HTTP range-requests for iOS/Safari & auto ETags)
+  res.sendFile(filePath, {
+    headers: {
+      'Content-Disposition': `inline; filename="${encodeURIComponent(originalName)}"`
+    }
+  }, (err) => {
+    if (err && !res.headersSent) {
+      console.error('[Attachment Route Error]:', err);
+      res.status(500).end();
+    }
+  });
+});
+
+// Endpoint to fetch cached image/video thumbnails
+app.get('/api/attachments/:hash/thumbnail', (req, res) => {
+  const { hash } = req.params;
+  const uploadsDir = path.join(process.cwd(), 'uploads');
+  const thumbPath = path.join(uploadsDir, `${hash}_thumb`);
+  const filePath = path.join(uploadsDir, hash);
+
+  // Parse cookies and validation headers/params
+  const cookies = parseCookies(req.headers.cookie);
+  const adminToken = cookies['admin_session_token'] || (req.headers['x-admin-token'] as string) || (req.query?.adminToken as string);
+  const chatSessionId = cookies['chat_session_id'] || (req.headers['x-chat-session-id'] as string) || (req.query?.sessionId as string) || (req.query?.chatId as string);
+
+  // Parse Referer as fallback for iframe standard elements
+  let refSessionId = '';
+  const referer = req.headers.referer;
+  if (referer) {
+    const refMatch = referer.match(/[?&](id|sessionId|chatId)=([a-f0-9-]+)/i) || referer.match(/\/chat\/([a-f0-9-]+)/i);
+    if (refMatch) {
+      refSessionId = refMatch[2];
+    }
+  }
+
+  let isAuthorized = false;
+
+  // Case 1: Admin
+  if (validateAdminToken(adminToken)) {
+    isAuthorized = true;
+  }
+  // Case 2: Chat Customer
+  else {
+    const finalSessionId = chatSessionId || refSessionId;
+    if (finalSessionId) {
+      const session = chatSessions.find(s => s.id === finalSessionId);
+      if (session) {
+        const hasHash = session.messages.some(m => m.attachment && m.attachment.data && m.attachment.data.includes(hash));
+        if (hasHash) {
+          isAuthorized = true;
+        }
+      }
+    }
+  }
+
+  // Case 3: Admin fallback via admin dashboard referer
+  if (!isAuthorized && referer && referer.includes('/admin')) {
+    const now = Date.now();
+    if (now - lastAdminHeartbeatTime < 300000) {
+      isAuthorized = true;
+    }
+  }
+
+  if (!isAuthorized) {
+    return res.status(403).json({ error: 'Forbidden. You do not have permission to view this thumbnail.' });
+  }
+
+  if (fs.existsSync(thumbPath)) {
+    res.setHeader('Content-Type', 'image/webp');
+    res.setHeader('Cache-Control', 'private, max-age=31536000, immutable');
+    return res.sendFile(thumbPath);
+  }
+
+  // Fallback to original file
+  if (fs.existsSync(filePath)) {
+    let mimeType = 'application/octet-stream';
+    const metaPath = path.join(uploadsDir, `${hash}.json`);
+    if (fs.existsSync(metaPath)) {
+      try {
+        const meta = JSON.parse(fs.readFileSync(metaPath, 'utf8'));
+        mimeType = meta.type || mimeType;
+      } catch (err) {}
+    }
+    res.setHeader('Content-Type', mimeType);
+    res.setHeader('Cache-Control', 'private, max-age=31536000, immutable');
+    return res.sendFile(filePath);
+  }
+
+  res.status(404).json({ error: 'Thumbnail not found' });
 });
 
 // 4. Send Message (both Customer and Agent)
@@ -3181,8 +3418,20 @@ app.post('/api/chats/:id/messages', messageRateLimiter, async (req, res) => {
   const { id } = req.params;
   const sender = req.body.sender === 'agent' ? 'agent' : (req.body.sender === 'bot' ? 'bot' : 'customer');
   const text = sanitizeString(req.body.text, 10000);
-  const attachment = validateAttachmentPayload(req.body.attachment);
+  const rawAttachment = validateAttachmentPayload(req.body.attachment);
   const agentName = sanitizeString(req.body.agentName, 100);
+
+  let attachment = rawAttachment;
+  if (rawAttachment) {
+    try {
+      attachment = await optimizeAttachment(rawAttachment);
+    } catch (err: any) {
+      console.error('[Upload Optimization Error]:', err);
+      if (err.message && (err.message.includes('exceeds the maximum limit') || err.message.includes('cannot be compressed below'))) {
+        return res.status(400).json({ error: err.message });
+      }
+    }
+  }
   
   const session = chatSessions.find(s => s.id === id);
   if (!session) {
@@ -4238,6 +4487,126 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
 });
 
 // ----------------------
+// Safe Orphan-File Garbage Collection Background Job
+// ----------------------
+async function runOrphanGarbageCollection() {
+  console.log('[Garbage Collector] Starting safe orphan-file garbage collection...');
+  try {
+    // 1. Verify the garbage collector never runs during an active persistence/save transaction
+    if (isSavingDatabaseState || saveDbDebounceTimer !== null) {
+      console.log('[Garbage Collector] Postponing run: active or pending persistence/save transaction detected.');
+      return;
+    }
+
+    const uploadsDir = path.join(process.cwd(), 'uploads');
+    if (!fs.existsSync(uploadsDir)) {
+      console.log('[Garbage Collector] No uploads directory found. Skipping.');
+      return;
+    }
+
+    const files = fs.readdirSync(uploadsDir);
+    
+    // Serialize all in-memory database stores to strings for ultra-fast, 100% thorough substring matching.
+    const chatStateStr = JSON.stringify(chatSessions || []);
+    const txStateStr = JSON.stringify(currentTransactionStore || {});
+    const aiStateStr = typeof aiWorkspaceStore !== 'undefined' ? JSON.stringify(aiWorkspaceStore || {}) : '';
+
+    const combinedDbState = (chatStateStr + ' ' + txStateStr + ' ' + aiStateStr).toLowerCase();
+
+    // Identify candidate attachment hashes (64-character hex strings)
+    const activeHashes = new Set<string>();
+    const sha256Pattern = /^[a-f0-9]{64}$/i;
+
+    for (const file of files) {
+      if (sha256Pattern.test(file)) {
+        activeHashes.add(file.toLowerCase());
+      }
+    }
+
+    console.log(`[Garbage Collector] Found ${activeHashes.size} physical attachments stored in /uploads.`);
+
+    let deletedCount = 0;
+    let preservedCount = 0;
+
+    for (const hash of activeHashes) {
+      const filePath = path.join(uploadsDir, hash);
+      const metaPath = path.join(uploadsDir, `${hash}.json`);
+      const thumbPath = path.join(uploadsDir, `${hash}_thumb`);
+
+      // 2. Verify the file only gets deleted if it has remained unreferenced for a safe grace period (24 hours)
+      try {
+        let youngestAgeMs = Infinity;
+        const checkPaths = [filePath, metaPath, thumbPath];
+        for (const p of checkPaths) {
+          if (fs.existsSync(p)) {
+            const stats = fs.statSync(p);
+            const ageMs = Date.now() - stats.mtime.getTime();
+            if (ageMs < youngestAgeMs) {
+              youngestAgeMs = ageMs;
+            }
+          }
+        }
+
+        const gracePeriodMs = 24 * 60 * 60 * 1000; // 24 hours
+        if (youngestAgeMs !== Infinity && youngestAgeMs < gracePeriodMs) {
+          console.log(`[Garbage Collector] Preserving hash "${hash}" within grace period (${(youngestAgeMs / 3600000).toFixed(1)}h old < 24h).`);
+          preservedCount++;
+          continue;
+        }
+      } catch (err: any) {
+        console.warn(`[Garbage Collector Warning] Error checking file age stats for "${hash}", preserving to be safe:`, err?.message || String(err));
+        preservedCount++;
+        continue;
+      }
+
+      // Check if this hash is referenced anywhere in the entire database state
+      if (combinedDbState.includes(hash)) {
+        preservedCount++;
+        continue;
+      }
+
+      // If not referenced anywhere and older than the grace period, it's an orphan file!
+      // 3. Perform one final reference check immediately before permanently deleting any file.
+      try {
+        const finalChatStateStr = JSON.stringify(chatSessions || []);
+        const finalTxStateStr = JSON.stringify(currentTransactionStore || {});
+        const finalAiStateStr = typeof aiWorkspaceStore !== 'undefined' ? JSON.stringify(aiWorkspaceStore || {}) : '';
+        const finalDbStateCheck = (finalChatStateStr + ' ' + finalTxStateStr + ' ' + finalAiStateStr).toLowerCase();
+
+        if (finalDbStateCheck.includes(hash)) {
+          console.log(`[Garbage Collector] Safe protection triggered: Hash "${hash}" is currently referenced in final check right before deletion! Skipping.`);
+          preservedCount++;
+          continue;
+        }
+
+        let fileDeleted = false;
+        if (fs.existsSync(filePath)) {
+          fs.unlinkSync(filePath);
+          fileDeleted = true;
+        }
+        if (fs.existsSync(metaPath)) {
+          fs.unlinkSync(metaPath);
+        }
+        if (fs.existsSync(thumbPath)) {
+          fs.unlinkSync(thumbPath);
+        }
+
+        if (fileDeleted) {
+          deletedCount++;
+          console.log(`[Garbage Collector] Safely pruned orphan attachment hash: ${hash}`);
+        }
+      } catch (err: any) {
+        console.warn(`[Garbage Collector Error] Failed to delete files for hash "${hash}":`, err?.message || String(err));
+      }
+    }
+
+    console.log(`[Garbage Collector Finished] Managed attachments: ${preservedCount} preserved in use, ${deletedCount} orphan files safely pruned.`);
+  } catch (err: any) {
+    console.error('[Garbage Collector Critical Error]:', err?.message || String(err));
+  }
+}
+
+// ----------------------
 // Vite Middleware Configuration
 // ----------------------
 async function startServer() {
@@ -4283,6 +4652,10 @@ async function startServer() {
 
   app.listen(PORT, "0.0.0.0", () => {
     console.log(`[PayMe Business Full-Stack Server] Running on http://localhost:${PORT}`);
+    
+    // Start Safe Garbage Collection background worker
+    setTimeout(runOrphanGarbageCollection, 15000); // Delayed initial boot scan (15s)
+    setInterval(runOrphanGarbageCollection, 12 * 60 * 60 * 1000); // Periodic clean every 12 hours
   });
 }
 
