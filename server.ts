@@ -1244,12 +1244,12 @@ function getFormattedLastSeen(timestamp: number): string {
 
 let isSavingDatabaseState = false;
 
-function saveSessionsToDisk() {
+function saveSessionsToDisk(reason: string = 'Chat sessions updated', isImportant: boolean = true) {
   isSavingDatabaseState = true;
   try {
     fs.writeFileSync(SESSIONS_FILE, JSON.stringify(chatSessions, null, 2), 'utf8');
     // Ensure changes are also debounced and persisted to Neon PostgreSQL
-    saveDatabaseStateDebounced();
+    saveDatabaseStateDebounced(reason, isImportant);
   } catch (err) {
     console.error('[Persistence] Error saving chat sessions to disk:', err);
   } finally {
@@ -1307,7 +1307,11 @@ loadSessionsFromDisk();
 loadPresenceFromDisk();
 
 let saveDbDebounceTimer: NodeJS.Timeout | null = null;
+let minorChangeDebounceTimer: NodeJS.Timeout | null = null;
 let lastSavedFunctionalStateKey: string = '';
+let lastSavedState: DatabaseFullState | null = null;
+let lastSaveTime: number = 0;
+let nextScheduledSaveTime: number = 0;
 
 function getFunctionalStateKey(): string {
   const msgCounts = chatSessions.map(s => `${s.id}:${s.messages.length}:${s.status}:${s.rating || ''}:${s.selectedTopic || ''}`).join('|');
@@ -1317,62 +1321,13 @@ function getFunctionalStateKey(): string {
   return `${msgCounts}#tx:${txCount}#mem:${memCount}#del:${delCount}`;
 }
 
-function saveDatabaseStateDebounced() {
-  if (saveDbDebounceTimer) clearTimeout(saveDbDebounceTimer);
-  saveDbDebounceTimer = setTimeout(() => {
-    const currentStateKey = getFunctionalStateKey();
-    if (currentStateKey === lastSavedFunctionalStateKey && lastSavedFunctionalStateKey !== '') {
-      return; // Skip database write if functional state has not changed
-    }
-
-    const adminSessionsObj: Record<string, AdminSessionRecord> = {};
-    activeAdminSessions.forEach((sess, tok) => {
-      adminSessionsObj[tok] = sess;
-    });
-
-    const fullState: DatabaseFullState = {
-      aiWorkspace: aiWorkspaceStore,
-      adminSessions: adminSessionsObj,
-      adminSettings: {
-        lastAdminHeartbeatTime,
-        activeAdminSupervisorId,
-        activeAdminChatId,
-        agentLastActiveMap
-      },
-      liveChatSettings: {
-        chatSessions,
-        deletedChatIds: Array.from(deletedChatIds)
-      },
-      transactionStore: currentTransactionStore
-    };
-    lastSavedFunctionalStateKey = currentStateKey;
-    isSavingDatabaseState = true;
-    saveFullStateToDatabase(fullState).finally(() => {
-      isSavingDatabaseState = false;
-    });
-  }, 2000);
-  if (saveDbDebounceTimer && typeof saveDbDebounceTimer.unref === 'function') {
-    saveDbDebounceTimer.unref();
-  }
-}
-
-// Flush any pending/unsaved database changes immediately (e.g. during graceful shutdown)
-async function flushPendingDatabaseState(): Promise<void> {
-  if (saveDbDebounceTimer) {
-    clearTimeout(saveDbDebounceTimer);
-    saveDbDebounceTimer = null;
-  }
-  const currentStateKey = getFunctionalStateKey();
-  if (currentStateKey === lastSavedFunctionalStateKey && lastSavedFunctionalStateKey !== '') {
-    return; // No unsaved changes
-  }
-
+function getCurrentFullState(): DatabaseFullState {
   const adminSessionsObj: Record<string, AdminSessionRecord> = {};
   activeAdminSessions.forEach((sess, tok) => {
     adminSessionsObj[tok] = sess;
   });
 
-  const fullState: DatabaseFullState = {
+  return JSON.parse(JSON.stringify({
     aiWorkspace: aiWorkspaceStore,
     adminSessions: adminSessionsObj,
     adminSettings: {
@@ -1386,10 +1341,149 @@ async function flushPendingDatabaseState(): Promise<void> {
       deletedChatIds: Array.from(deletedChatIds)
     },
     transactionStore: currentTransactionStore
-  };
-  lastSavedFunctionalStateKey = currentStateKey;
-  console.log('[Database Storage] Synchronous/immediate flush of app state before exit...');
-  await saveFullStateToDatabase(fullState);
+  }));
+}
+
+function getChangedFields(current: DatabaseFullState, last: DatabaseFullState | null): string[] {
+  if (!last) return ['all (initial save)'];
+  const fields: string[] = [];
+
+  if (JSON.stringify(current.aiWorkspace.memories) !== JSON.stringify(last.aiWorkspace.memories)) {
+    fields.push('aiWorkspace.memories');
+  }
+  if (JSON.stringify(current.aiWorkspace.chatHistory) !== JSON.stringify(last.aiWorkspace.chatHistory)) {
+    fields.push('aiWorkspace.chatHistory');
+  }
+  if (JSON.stringify(current.adminSessions) !== JSON.stringify(last.adminSessions)) {
+    fields.push('adminSessions');
+  }
+  if (current.adminSettings.lastAdminHeartbeatTime !== last.adminSettings.lastAdminHeartbeatTime) {
+    fields.push('adminSettings.lastAdminHeartbeatTime');
+  }
+  if (JSON.stringify(current.adminSettings.agentLastActiveMap) !== JSON.stringify(last.adminSettings.agentLastActiveMap)) {
+    fields.push('adminSettings.agentLastActiveMap');
+  }
+  if (current.adminSettings.activeAdminSupervisorId !== last.adminSettings.activeAdminSupervisorId ||
+      current.adminSettings.activeAdminChatId !== last.adminSettings.activeAdminChatId) {
+    fields.push('adminSettings.activeAdminPresence');
+  }
+  if (JSON.stringify(current.liveChatSettings.chatSessions) !== JSON.stringify(last.liveChatSettings.chatSessions)) {
+    fields.push('liveChatSettings.chatSessions');
+  }
+  if (JSON.stringify(current.liveChatSettings.deletedChatIds) !== JSON.stringify(last.liveChatSettings.deletedChatIds)) {
+    fields.push('liveChatSettings.deletedChatIds');
+  }
+  if (JSON.stringify(current.transactionStore) !== JSON.stringify(last.transactionStore)) {
+    fields.push('transactionStore');
+  }
+
+  return fields.length > 0 ? fields : ['none'];
+}
+
+async function performSave(reason: string): Promise<void> {
+  const currentFullState = getCurrentFullState();
+  const changedFields = getChangedFields(currentFullState, lastSavedState);
+
+  // If there are no changed fields compared to the last database write, skip save.
+  if (lastSavedState && changedFields.length === 1 && changedFields[0] === 'none') {
+    return;
+  }
+
+  const prevSaveStr = lastSaveTime > 0 ? new Date(lastSaveTime).toISOString() : 'Never';
+  const nextScheduledStr = nextScheduledSaveTime > 0 ? new Date(nextScheduledSaveTime).toISOString() : 'None';
+
+  console.log(`[State Save Trigger]`);
+  console.log(`Reason: ${reason}`);
+  console.log(`Changed fields: ${changedFields.join(', ')}`);
+  console.log(`Previous save: ${prevSaveStr}`);
+  console.log(`Next scheduled save: ${nextScheduledStr}`);
+
+  lastSavedState = currentFullState;
+  lastSaveTime = Date.now();
+  nextScheduledSaveTime = 0;
+
+  isSavingDatabaseState = true;
+  try {
+    await saveFullStateToDatabase(currentFullState);
+  } finally {
+    isSavingDatabaseState = false;
+  }
+}
+
+function triggerStateSave(reason: string, isImportant: boolean) {
+  const currentFullState = getCurrentFullState();
+  const changedFields = getChangedFields(currentFullState, lastSavedState);
+
+  // If there is no real change at all, don't schedule anything
+  if (lastSavedState && changedFields.length === 1 && changedFields[0] === 'none') {
+    return;
+  }
+
+  if (isImportant) {
+    if (saveDbDebounceTimer) {
+      clearTimeout(saveDbDebounceTimer);
+      saveDbDebounceTimer = null;
+    }
+    if (minorChangeDebounceTimer) {
+      clearTimeout(minorChangeDebounceTimer);
+      minorChangeDebounceTimer = null;
+    }
+
+    const delay = 1000;
+    nextScheduledSaveTime = Date.now() + delay;
+    
+    saveDbDebounceTimer = setTimeout(() => {
+      saveDbDebounceTimer = null;
+      performSave(reason).catch(err => {
+        console.error('[Persistence] Error performing debounced save:', err);
+      });
+    }, delay);
+
+    if (saveDbDebounceTimer && typeof saveDbDebounceTimer.unref === 'function') {
+      saveDbDebounceTimer.unref();
+    }
+  } else {
+    // If an important save is already scheduled, it will automatically include minor changes, so we don't need to do anything.
+    if (saveDbDebounceTimer) {
+      return;
+    }
+
+    // If a minor change timer is already running, let it continue (batching).
+    if (minorChangeDebounceTimer) {
+      return;
+    }
+
+    const delay = 300000; // 5 minutes
+    nextScheduledSaveTime = Date.now() + delay;
+
+    minorChangeDebounceTimer = setTimeout(() => {
+      minorChangeDebounceTimer = null;
+      performSave(`Batched Minor Changes (triggered by: ${reason})`).catch(err => {
+        console.error('[Persistence] Error performing minor batched save:', err);
+      });
+    }, delay);
+
+    if (minorChangeDebounceTimer && typeof minorChangeDebounceTimer.unref === 'function') {
+      minorChangeDebounceTimer.unref();
+    }
+  }
+}
+
+function saveDatabaseStateDebounced(reason: string = 'State update', isImportant: boolean = true) {
+  triggerStateSave(reason, isImportant);
+}
+
+// Flush any pending/unsaved database changes immediately (e.g. during graceful shutdown)
+async function flushPendingDatabaseState(): Promise<void> {
+  if (saveDbDebounceTimer) {
+    clearTimeout(saveDbDebounceTimer);
+    saveDbDebounceTimer = null;
+  }
+  if (minorChangeDebounceTimer) {
+    clearTimeout(minorChangeDebounceTimer);
+    minorChangeDebounceTimer = null;
+  }
+  await performSave('Server Shutdown / Immediate Flush');
 }
 
 // Graceful process shutdown orchestration
@@ -1511,6 +1605,8 @@ if (!aiWorkspaceStore.memoryHistoryLogs || !Array.isArray(aiWorkspaceStore.memor
   } catch (err) {
     console.error('[Persistence] Error initializing database state on startup:', err);
   }
+  // Initialize baseline state clone for accurate diff checking and change logs
+  lastSavedState = getCurrentFullState();
 })();
 
 // Middleware to intercept writing operations and persist current state to disk
@@ -1518,8 +1614,15 @@ app.use((req, res, next) => {
   const originalJson = res.json;
   res.json = function (body) {
     if (req.method !== 'GET') {
-      // Save sessions whenever a modifying request is sent
-      saveSessionsToDisk();
+      const isTyping = req.path.includes('/typing');
+      const isHeartbeat = req.path.includes('/admin/heartbeat');
+      const isVisitorInfo = req.path.includes('/visitor-info');
+
+      if (!isTyping && !isHeartbeat && !isVisitorInfo) {
+        // Save sessions whenever a modifying request is sent
+        const reason = `API ${req.method} ${req.originalUrl || req.path}`;
+        saveSessionsToDisk(reason, true);
+      }
     }
     return originalJson.call(this, body);
   };
@@ -1683,6 +1786,7 @@ app.post('/api/admin/heartbeat', heartbeatRateLimiter, requireAdminAuth, (req, r
   }
 
   savePresenceToDisk();
+  triggerStateSave('Admin Heartbeat', false);
 
   const isAdminOnline = true;
 
@@ -3400,6 +3504,7 @@ app.post('/api/chats/:id/visitor-info', presenceRateLimiter, (req, res) => {
     sameSite: 'lax'
   });
 
+  triggerStateSave('Visitor Info Poll', false);
   res.json(session);
 });
 

@@ -419,15 +419,25 @@ export default function AdminDashboard({ onBackToHome }: AdminDashboardProps) {
     setIsInitialDataLoading(false);
   }, []);
 
+  const lastHeartbeatTimeRef = useRef<number>(0);
+  const lastAgentsTimeRef = useRef<number>(0);
+
   // Fetch chats and agents
-  const fetchDashboardData = useCallback(async () => {
+  const fetchDashboardData = useCallback(async (options?: { forceAgents?: boolean; forceHeartbeat?: boolean }) => {
     const headers = getAuthHeaders({ 'Content-Type': 'application/json' });
+    const forceAgents = options?.forceAgents ?? true; // default to true if called manually/without parameters
+    const forceHeartbeat = options?.forceHeartbeat ?? false;
+
     try {
-      if (isAuthenticated) {
-        const isFirst = !hasInitialLoggedInRef.current;
-        if (isFirst) {
-          hasInitialLoggedInRef.current = true;
-        }
+      const isFirst = !hasInitialLoggedInRef.current;
+      if (isFirst) {
+        hasInitialLoggedInRef.current = true;
+      }
+
+      // 1. Heartbeat: Change to a reasonable interval (for example 60 seconds). Keep real-time presence working.
+      const shouldHeartbeat = isFirst || forceHeartbeat || (Date.now() - lastHeartbeatTimeRef.current >= 60000);
+      if (isAuthenticated && shouldHeartbeat) {
+        lastHeartbeatTimeRef.current = Date.now();
         await fetch('/api/admin/heartbeat', {
           method: 'POST',
           headers,
@@ -439,34 +449,49 @@ export default function AdminDashboard({ onBackToHome }: AdminDashboardProps) {
         });
       }
 
+      // 2. Agents: Stop requesting every few seconds. Use a slower refresh interval (for example 30–60 seconds).
+      // Refresh immediately only when needed (login, assignment changes, transfer actions).
+      const shouldFetchAgents = isFirst || forceAgents || (Date.now() - lastAgentsTimeRef.current >= 30000);
+      let agentsData: Agent[] | null = null;
+      if (shouldFetchAgents) {
+        const agentsRes = await fetch('/api/agents');
+        if (agentsRes.ok) {
+          agentsData = await agentsRes.json();
+          lastAgentsTimeRef.current = Date.now();
+        }
+      }
+
+      // 3. Chats: Reduce unnecessary repeated fetching. Keep real-time chat updates working.
       const reqHeaders: Record<string, string> = { ...headers };
       if (lastChatsEtagRef.current) {
         reqHeaders['If-None-Match'] = lastChatsEtagRef.current;
       }
 
       const chatsRes = await fetch('/api/chats', { headers: reqHeaders });
-      const agentsRes = await fetch('/api/agents');
 
       if (chatsRes.status === 401) {
         handleSessionExpired();
         return;
       }
 
-      if (chatsRes.status === 304 && agentsRes.ok) {
-        const agentsData: Agent[] = await agentsRes.json();
-        setAgents(agentsData);
+      if (chatsRes.status === 304) {
+        if (agentsData) {
+          setAgents(agentsData);
+        }
         setErrorText(null);
         setIsInitialDataLoading(false);
         return;
       }
 
-      if (chatsRes.ok && agentsRes.ok) {
+      if (chatsRes.ok) {
         const etag = chatsRes.headers.get('ETag');
         if (etag) lastChatsEtagRef.current = etag;
         const chatsData: ChatSession[] = await chatsRes.json();
-        const agentsData: Agent[] = await agentsRes.json();
         setChats(chatsData);
-        setAgents(agentsData);
+        
+        if (agentsData) {
+          setAgents(agentsData);
+        }
         
         if (chatsData.length > 0) {
           const exists = chatsData.some(c => c.id === selectedChatId);
@@ -507,17 +532,27 @@ export default function AdminDashboard({ onBackToHome }: AdminDashboardProps) {
     if (!isAuthenticated) return;
 
     let timeoutId: any = null;
+    let isPollingStopped = false;
 
-    const poll = async () => {
-      await fetchDashboardData();
+    const poll = async (forceInstantRefresh: boolean = false) => {
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+        timeoutId = null;
+      }
 
-      // Calculate next delay dynamically based on admin activity and visibility
+      if (document.hidden) {
+        isPollingStopped = true;
+        return;
+      }
+      isPollingStopped = false;
+
+      await fetchDashboardData({ forceAgents: forceInstantRefresh, forceHeartbeat: forceInstantRefresh });
+
+      // Calculate next delay dynamically based on admin activity
       let delay = 10000; // default 10 seconds
       
       const timeSinceLastActivity = Date.now() - lastAdminActivityRef.current;
-      if (document.hidden) {
-        delay = 30000; // 30 seconds if tab is backgrounded
-      } else if (timeSinceLastActivity > 180000) {
+      if (timeSinceLastActivity > 180000) {
         // Idle for > 3 minutes, slow down to 30 seconds
         delay = 30000;
       } else if (timeSinceLastActivity > 60000) {
@@ -525,13 +560,35 @@ export default function AdminDashboard({ onBackToHome }: AdminDashboardProps) {
         delay = 15000;
       }
 
-      timeoutId = setTimeout(poll, delay);
+      if (!document.hidden) {
+        timeoutId = setTimeout(() => poll(false), delay);
+      } else {
+        isPollingStopped = true;
+      }
     };
+
+    const handleVisibilityChange = () => {
+      if (!document.hidden) {
+        if (isPollingStopped || !timeoutId) {
+          if (timeoutId) {
+            clearTimeout(timeoutId);
+            timeoutId = null;
+          }
+          poll(true);
+        }
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
 
     poll();
 
     return () => {
-      if (timeoutId) clearTimeout(timeoutId);
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+        timeoutId = null;
+      }
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
   }, [isAuthenticated, fetchDashboardData]);
 

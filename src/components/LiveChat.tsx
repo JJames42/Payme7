@@ -758,7 +758,21 @@ export default function LiveChat({ onBackToHome, sessionId: propSessionId }: Liv
 
   // Fetch agents periodically to keep dynamic status updated
   useEffect(() => {
+    let timeoutId: any = null;
+    let isPaused = false;
+
     const fetchAgents = async () => {
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+        timeoutId = null;
+      }
+
+      if (document.hidden) {
+        isPaused = true;
+        return;
+      }
+      isPaused = false;
+
       try {
         const res = await fetch('/api/agents');
         if (res.ok) {
@@ -768,12 +782,39 @@ export default function LiveChat({ onBackToHome, sessionId: propSessionId }: Liv
       } catch (err) {
         console.warn('Failed to fetch agents:', err);
       }
+
+      if (!document.hidden) {
+        timeoutId = setTimeout(fetchAgents, 45000);
+      } else {
+        isPaused = true;
+      }
     };
+
+    const handleVisibilityChange = () => {
+      if (!document.hidden) {
+        if (isPaused || !timeoutId) {
+          if (timeoutId) {
+            clearTimeout(timeoutId);
+            timeoutId = null;
+          }
+          fetchAgents();
+        }
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
     fetchAgents();
-    const interval = setInterval(fetchAgents, 10000);
-    return () => clearInterval(interval);
+
+    return () => {
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+        timeoutId = null;
+      }
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
   }, []);
 
+  const isInitializingChatRef = useRef(false);
   const lastSessionIdRef = useRef<string | undefined>(undefined);
   const isInitialLoadRef = useRef(true);
   const prevAgentIdRef = useRef<string | undefined>(undefined);
@@ -1043,6 +1084,8 @@ Description: ${formDesc.trim() || 'None Provided'}`;
   const prevMessagesLengthRef = useRef(0);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const scrollTimeoutRef = useRef<any>(null);
+  const customerTypingTimeoutRef = useRef<any>(null);
+  const isCurrentlyTypingRef = useRef<boolean>(false);
 
   const handleChatScroll = () => {
     if (!isScrollingChat) {
@@ -1368,6 +1411,8 @@ Description: ${formDesc.trim() || 'None Provided'}`;
   // Initialize and check current URL path
   useEffect(() => {
     const initChat = async () => {
+      if (isInitializingChatRef.current) return;
+      isInitializingChatRef.current = true;
       setLoading(true);
       try {
         let sid = propSessionId;
@@ -1420,6 +1465,7 @@ Description: ${formDesc.trim() || 'None Provided'}`;
             clearCustomerSession();
             setSession(null);
             setBotStep(0);
+            isInitializingChatRef.current = false;
             return;
           }
         }
@@ -1451,6 +1497,7 @@ Description: ${formDesc.trim() || 'None Provided'}`;
 
         setErrorMessage(null);
       } catch (err: any) {
+        isInitializingChatRef.current = false; // Allow retry on failure
         setErrorMessage('Connecting to secure gateway. Re-routing...');
         console.error(err);
       } finally {
@@ -1488,8 +1535,20 @@ Description: ${formDesc.trim() || 'None Provided'}`;
     if (!session) return;
 
     let timeoutId: any = null;
+    let isPollingStopped = false;
 
     const poll = async () => {
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+        timeoutId = null;
+      }
+
+      if (document.hidden) {
+        isPollingStopped = true;
+        return;
+      }
+      isPollingStopped = false;
+
       try {
         const vInfo = collectVisitorInfo();
         const res = await fetch('/api/chats/create', {
@@ -1541,19 +1600,45 @@ Description: ${formDesc.trim() || 'None Provided'}`;
           nextDelay = 10000; // Slow down on error
         }
 
-        timeoutId = setTimeout(poll, nextDelay);
+        if (!document.hidden) {
+          timeoutId = setTimeout(poll, nextDelay);
+        } else {
+          isPollingStopped = true;
+        }
       } catch (err) {
         console.warn('Real-time synchronization failure:', err);
-        timeoutId = setTimeout(poll, 10000); // Retry after 10s on network error
+        if (!document.hidden) {
+          timeoutId = setTimeout(poll, 10000); // Retry after 10s on network error
+        } else {
+          isPollingStopped = true;
+        }
       }
     };
+
+    const handleVisibilityChange = () => {
+      if (!document.hidden) {
+        if (isPollingStopped || !timeoutId) {
+          if (timeoutId) {
+            clearTimeout(timeoutId);
+            timeoutId = null;
+          }
+          poll();
+        }
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
 
     // Schedule first poll
     const delay = getNextPollingDelay(session);
     timeoutId = setTimeout(poll, delay);
 
     return () => {
-      if (timeoutId) clearTimeout(timeoutId);
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+        timeoutId = null;
+      }
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
   }, [session?.id, (session as any)?.version, customerLanguage, connectionStatus]);
 
@@ -2465,6 +2550,12 @@ Description: ${formDesc}`;
   // Trigger Typing Statuses
   const triggerTypingStatus = async (isTyping: boolean) => {
     if (!session || session.isLocked || session.isBlocked) return;
+    if (!isTyping && customerTypingTimeoutRef.current) {
+      clearTimeout(customerTypingTimeoutRef.current);
+      customerTypingTimeoutRef.current = null;
+    }
+    if (isCurrentlyTypingRef.current === isTyping) return;
+    isCurrentlyTypingRef.current = isTyping;
     try {
       await fetch(`/api/chats/${session.id}/typing`, {
         method: 'POST',
@@ -3991,7 +4082,20 @@ Description: ${formDesc}`;
                             value={inputMessage}
                             onChange={(e) => {
                               setInputMessage(e.target.value);
-                              triggerTypingStatus(e.target.value.length > 0);
+                              
+                              if (customerTypingTimeoutRef.current) {
+                                clearTimeout(customerTypingTimeoutRef.current);
+                              }
+
+                              const hasText = e.target.value.length > 0;
+                              if (hasText) {
+                                triggerTypingStatus(true);
+                                customerTypingTimeoutRef.current = setTimeout(() => {
+                                  triggerTypingStatus(false);
+                                }, 3000);
+                              } else {
+                                triggerTypingStatus(false);
+                              }
                             }}
                             onFocus={() => {
                               setTimeout(() => {
@@ -4003,7 +4107,13 @@ Description: ${formDesc}`;
                                 }
                               }, 150);
                             }}
-                            onBlur={() => triggerTypingStatus(false)}
+                            onBlur={() => {
+                              if (customerTypingTimeoutRef.current) {
+                                clearTimeout(customerTypingTimeoutRef.current);
+                                customerTypingTimeoutRef.current = null;
+                              }
+                              triggerTypingStatus(false);
+                            }}
                             placeholder={isScrollingChat ? '' : t('composerPlaceholder')}
                             rows={1}
                             className={`w-full bg-transparent border-0 p-0 text-[16px] text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-0 leading-snug resize-none overflow-y-auto max-h-20 animate-fadeIn transition-all duration-300 relative z-10 ${isScrollingChat ? 'placeholder-transparent' : 'placeholder-slate-400'}`}
