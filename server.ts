@@ -4880,6 +4880,17 @@ async function runOrphanGarbageCollection() {
 // Vite Middleware Configuration
 // ----------------------
 async function startServer() {
+  // Return clean status codes for standard browser-triggered metadata files to avoid loading/transforming index.html
+  app.get([
+    '/favicon.ico',
+    '/apple-touch-icon.png',
+    '/apple-touch-icon-precomposed.png',
+    '/manifest.json',
+    '/browserconfig.xml'
+  ], (req, res) => {
+    res.status(204).end();
+  });
+
   if (process.env.NODE_ENV !== "production") {
     // Mount Vite development server middleware
     const vite = await createViteServer({

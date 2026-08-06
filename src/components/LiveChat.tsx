@@ -394,6 +394,11 @@ function CsatRatingCard({
   );
 }
 
+let activeAgentsPromise: Promise<Agent[]> | null = null;
+let geoFetchPromise: Promise<any> | null = null;
+let activeInitPromise: Promise<any> | null = null;
+let activeInitId: string | undefined | null = null;
+
 export default function LiveChat({ onBackToHome, sessionId: propSessionId }: LiveChatProps) {
   const clearCustomerSession = () => {
     localStorage.removeItem('payme_chat_session_id');
@@ -774,11 +779,21 @@ export default function LiveChat({ onBackToHome, sessionId: propSessionId }: Liv
       isPaused = false;
 
       try {
-        const res = await fetch('/api/agents');
-        if (res.ok) {
-          const data = await res.json();
-          setAgents(data);
+        let data: Agent[];
+        if (activeAgentsPromise) {
+          data = await activeAgentsPromise;
+        } else {
+          activeAgentsPromise = fetch('/api/agents')
+            .then(res => {
+              if (res.ok) return res.json();
+              throw new Error('Failed to fetch agents');
+            })
+            .finally(() => {
+              activeAgentsPromise = null;
+            });
+          data = await activeAgentsPromise;
         }
+        setAgents(data);
       } catch (err) {
         console.warn('Failed to fetch agents:', err);
       }
@@ -1216,10 +1231,19 @@ Description: ${formDesc.trim() || 'None Provided'}`;
 
   // Real-time geo intelligence loading
   useEffect(() => {
+    const cached = localStorage.getItem('payme_visitor_geo');
+    if (cached) {
+      try {
+        if (JSON.parse(cached).country !== 'Unavailable') {
+          return;
+        }
+      } catch (e) {}
+    }
+
+    if (geoFetchPromise) return;
+
     const loadGeo = async () => {
       try {
-        const cached = localStorage.getItem('payme_visitor_geo');
-        if (cached && JSON.parse(cached).country !== 'Unavailable') return;
         const res = await fetch('https://ipwho.is/').catch(() => null);
         if (res && res.ok) {
           const data = await res.json();
@@ -1249,7 +1273,8 @@ Description: ${formDesc.trim() || 'None Provided'}`;
         }
       } catch (e) {}
     };
-    loadGeo();
+
+    geoFetchPromise = loadGeo();
   }, []);
 
   const collectVisitorInfo = (): VisitorInfo => {
@@ -1424,6 +1449,50 @@ Description: ${formDesc.trim() || 'None Provided'}`;
           }
         }
 
+        if (activeInitPromise && activeInitId === sid) {
+          try {
+            const data = await activeInitPromise;
+            if (data) {
+              setSession(data);
+              if (data.status === 'bot') {
+                if (data.collectedInfo?.name) {
+                  setFormName(data.collectedInfo.name);
+                  if (data.collectedInfo?.email) {
+                    setFormEmail(data.collectedInfo.email);
+                    if (data.selectedTopic) {
+                      setFormCategory(data.selectedTopic);
+                      setBotStep(3);
+                    } else {
+                      setBotStep(2);
+                    }
+                  } else {
+                    setBotStep(1);
+                  }
+                } else {
+                  setBotStep(-1);
+                }
+              } else if (data.status === 'pending') {
+                setBotStep(4);
+              }
+              setErrorMessage(null);
+            }
+          } catch (err) {
+            console.warn('Reused initialization promise failed:', err);
+          } finally {
+            isInitializingChatRef.current = false;
+            setLoading(false);
+          }
+          return;
+        }
+
+        activeInitId = sid;
+        let resolvePromise: any;
+        let rejectPromise: any;
+        activeInitPromise = new Promise((resolve, reject) => {
+          resolvePromise = resolve;
+          rejectPromise = reject;
+        });
+
         const vInfo = collectVisitorInfo();
         const storedName = sid ? (localStorage.getItem('payme_customer_name') || '') : '';
         const storedEmail = sid ? (localStorage.getItem('payme_customer_email') || '') : '';
@@ -1466,6 +1535,9 @@ Description: ${formDesc.trim() || 'None Provided'}`;
             setSession(null);
             setBotStep(0);
             isInitializingChatRef.current = false;
+            resolvePromise(null);
+            activeInitPromise = null;
+            activeInitId = null;
             return;
           }
         }
@@ -1496,10 +1568,13 @@ Description: ${formDesc.trim() || 'None Provided'}`;
         }
 
         setErrorMessage(null);
+        resolvePromise(data);
       } catch (err: any) {
         isInitializingChatRef.current = false; // Allow retry on failure
         setErrorMessage('Connecting to secure gateway. Re-routing...');
         console.error(err);
+        activeInitPromise = null;
+        activeInitId = null;
       } finally {
         setLoading(false);
       }

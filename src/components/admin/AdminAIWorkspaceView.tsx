@@ -13,6 +13,8 @@ interface AdminAIWorkspaceViewProps {
   onSessionExpired?: () => void;
 }
 
+let activeWorkspaceStatePromise: Promise<any> | null = null;
+
 export const AdminAIWorkspaceView: React.FC<AdminAIWorkspaceViewProps> = ({
   getAuthHeaders,
   onSessionExpired
@@ -155,16 +157,24 @@ export const AdminAIWorkspaceView: React.FC<AdminAIWorkspaceViewProps> = ({
 
   const fetchWorkspaceState = async () => {
     try {
-      const res = await fetch('/api/admin/ai-workspace', {
-        headers: getHeaders()
-      });
-      if (handleAuthError(res)) return;
-      if (res.ok) {
-        const data = await res.json();
-        if (data.success) {
-          setMemories(data.memories || []);
-          setChatHistory(data.chatHistory || []);
-        }
+      let data;
+      if (activeWorkspaceStatePromise) {
+        data = await activeWorkspaceStatePromise;
+      } else {
+        activeWorkspaceStatePromise = fetch('/api/admin/ai-workspace', {
+          headers: getHeaders()
+        }).then(res => {
+          if (handleAuthError(res)) return null;
+          if (res.ok) return res.json();
+          throw new Error('Failed to fetch AI workspace');
+        }).finally(() => {
+          activeWorkspaceStatePromise = null;
+        });
+        data = await activeWorkspaceStatePromise;
+      }
+      if (data && data.success) {
+        setMemories(data.memories || []);
+        setChatHistory(data.chatHistory || []);
       }
     } catch (err) {
       console.error('Error fetching AI workspace state:', err);

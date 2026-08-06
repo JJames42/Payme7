@@ -35,6 +35,10 @@ interface AdminDashboardProps {
   onBackToHome: () => void;
 }
 
+let activeVerifyPromise: Promise<any> | null = null;
+let activeVerifyToken: string | null = null;
+let globalActiveDashboardFetchPromise: Promise<any> | null = null;
+
 export default function AdminDashboard({ onBackToHome }: AdminDashboardProps) {
   // Login State
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -290,16 +294,9 @@ export default function AdminDashboard({ onBackToHome }: AdminDashboardProps) {
     const checkSession = () => {
       const storedToken = sessionStorage.getItem('payme_admin_token') || localStorage.getItem('payme_admin_token');
       if (storedToken) {
-        fetch('/api/admin/verify-session', {
-          headers: {
-            'X-Admin-Token': storedToken,
-            'Authorization': `Bearer ${storedToken}`,
-            'Cache-Control': 'no-cache'
-          }
-        })
-          .then(r => r.json())
-          .then(d => {
-            if (d.valid) {
+        if (activeVerifyPromise && activeVerifyToken === storedToken) {
+          activeVerifyPromise.then(d => {
+            if (d && d.valid) {
               setAdminToken(storedToken);
               setIsAuthenticated(true);
             } else {
@@ -309,14 +306,45 @@ export default function AdminDashboard({ onBackToHome }: AdminDashboardProps) {
               setIsAuthenticated(false);
               setChats([]);
             }
-          })
-          .catch(() => {
+          }).catch(() => {
             sessionStorage.removeItem('payme_admin_token');
             localStorage.removeItem('payme_admin_token');
             setAdminToken(null);
             setIsAuthenticated(false);
             setChats([]);
           });
+          return;
+        }
+
+        activeVerifyToken = storedToken;
+        activeVerifyPromise = fetch('/api/admin/verify-session', {
+          headers: {
+            'X-Admin-Token': storedToken,
+            'Authorization': `Bearer ${storedToken}`,
+            'Cache-Control': 'no-cache'
+          }
+        })
+          .then(r => r.json())
+          .catch(() => null);
+
+        activeVerifyPromise.then(d => {
+          if (d && d.valid) {
+            setAdminToken(storedToken);
+            setIsAuthenticated(true);
+          } else {
+            sessionStorage.removeItem('payme_admin_token');
+            localStorage.removeItem('payme_admin_token');
+            setAdminToken(null);
+            setIsAuthenticated(false);
+            setChats([]);
+          }
+        }).catch(() => {
+          sessionStorage.removeItem('payme_admin_token');
+          localStorage.removeItem('payme_admin_token');
+          setAdminToken(null);
+          setIsAuthenticated(false);
+          setChats([]);
+        });
       } else {
         setAdminToken(null);
         setIsAuthenticated(false);
@@ -422,8 +450,26 @@ export default function AdminDashboard({ onBackToHome }: AdminDashboardProps) {
   const lastHeartbeatTimeRef = useRef<number>(0);
   const lastAgentsTimeRef = useRef<number>(0);
 
+  const selectedSupervisorIdRef = useRef(selectedSupervisorId);
+  const selectedChatIdRef = useRef(selectedChatId);
+  useEffect(() => {
+    selectedSupervisorIdRef.current = selectedSupervisorId;
+  }, [selectedSupervisorId]);
+  useEffect(() => {
+    selectedChatIdRef.current = selectedChatId;
+  }, [selectedChatId]);
+
   // Fetch chats and agents
   const fetchDashboardData = useCallback(async (options?: { forceAgents?: boolean; forceHeartbeat?: boolean }) => {
+    if (globalActiveDashboardFetchPromise) {
+      return globalActiveDashboardFetchPromise;
+    }
+
+    let resolvePromise: any;
+    globalActiveDashboardFetchPromise = new Promise((resolve) => {
+      resolvePromise = resolve;
+    });
+
     const headers = getAuthHeaders({ 'Content-Type': 'application/json' });
     const forceAgents = options?.forceAgents ?? true; // default to true if called manually/without parameters
     const forceHeartbeat = options?.forceHeartbeat ?? false;
@@ -442,8 +488,8 @@ export default function AdminDashboard({ onBackToHome }: AdminDashboardProps) {
           method: 'POST',
           headers,
           body: JSON.stringify({
-            supervisorId: selectedSupervisorId,
-            activeChatId: selectedChatId,
+            supervisorId: selectedSupervisorIdRef.current,
+            activeChatId: selectedChatIdRef.current,
             isInitialLogin: isFirst
           })
         });
@@ -494,8 +540,8 @@ export default function AdminDashboard({ onBackToHome }: AdminDashboardProps) {
         }
         
         if (chatsData.length > 0) {
-          const exists = chatsData.some(c => c.id === selectedChatId);
-          if (!selectedChatId || !exists) {
+          const exists = chatsData.some(c => c.id === selectedChatIdRef.current);
+          if (!selectedChatIdRef.current || !exists) {
             setSelectedChatId(chatsData[0].id);
           }
         } else {
@@ -510,8 +556,10 @@ export default function AdminDashboard({ onBackToHome }: AdminDashboardProps) {
       setErrorText('Re-routing secure gateway sync...');
     } finally {
       setIsInitialDataLoading(false);
+      globalActiveDashboardFetchPromise = null;
+      resolvePromise();
     }
-  }, [getAuthHeaders, isAuthenticated, selectedSupervisorId, selectedChatId, handleSessionExpired]);
+  }, [getAuthHeaders, isAuthenticated, handleSessionExpired]);
 
   const lastAdminActivityRef = useRef<number>(Date.now());
   useEffect(() => {

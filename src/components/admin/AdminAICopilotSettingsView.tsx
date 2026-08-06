@@ -19,6 +19,8 @@ interface ChatMessage {
   timestamp: string;
 }
 
+let activeCopilotSettingsPromise: Promise<any> | null = null;
+
 export const AdminAICopilotSettingsView: React.FC = () => {
   const [memories, setMemories] = useState<AIMemory[]>([]);
   const [chatHistory, setChatHistory] = useState<ChatMessage[]>([]);
@@ -38,12 +40,22 @@ export const AdminAICopilotSettingsView: React.FC = () => {
   const fetchSettings = async () => {
     setIsLoading(true);
     try {
-      const token = localStorage.getItem('payme_admin_token') || 'demo-admin-token';
-      const res = await fetch('/api/admin/ai-copilot-settings', {
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
-      if (res.ok) {
-        const data = await res.json();
+      let data;
+      if (activeCopilotSettingsPromise) {
+        data = await activeCopilotSettingsPromise;
+      } else {
+        const token = localStorage.getItem('payme_admin_token') || 'demo-admin-token';
+        activeCopilotSettingsPromise = fetch('/api/admin/ai-copilot-settings', {
+          headers: { 'Authorization': `Bearer ${token}` }
+        }).then(res => {
+          if (res.ok) return res.json();
+          throw new Error('Failed to fetch AI Copilot settings');
+        }).finally(() => {
+          activeCopilotSettingsPromise = null;
+        });
+        data = await activeCopilotSettingsPromise;
+      }
+      if (data) {
         if (data.memories) setMemories(data.memories);
         if (data.chatHistory) setChatHistory(data.chatHistory);
       }
