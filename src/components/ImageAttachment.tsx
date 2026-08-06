@@ -40,6 +40,15 @@ export const getAttachmentHash = (dataUrl: string | undefined): string | null =>
   return null;
 };
 
+// Helper to parse cookies on the client side
+const getCookie = (name: string): string | null => {
+  if (typeof document === 'undefined') return null;
+  const value = `; ${document.cookie}`;
+  const parts = value.split(`; ${name}=`);
+  if (parts.length === 2) return parts.pop()?.split(';').shift() || null;
+  return null;
+};
+
 export const ImageAttachment: React.FC<ImageAttachmentProps> = ({
   attachment,
   sessionId,
@@ -48,6 +57,7 @@ export const ImageAttachment: React.FC<ImageAttachmentProps> = ({
   const [isOpen, setIsOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [hasError, setHasError] = useState(false);
+  const [fallbackStage, setFallbackStage] = useState(0); // 0 = thumbnail, 1 = full webp, 2 = original / raw data, 3 = failed
 
   // Close lightbox on Escape key press
   useEffect(() => {
@@ -66,8 +76,27 @@ export const ImageAttachment: React.FC<ImageAttachmentProps> = ({
   const hash = getAttachmentHash(attachment.data);
   const isBase64 = attachment.data?.startsWith('data:');
 
-  // Build secure URLs
-  const queryParam = sessionId ? `?chatId=${encodeURIComponent(sessionId)}` : '';
+  // Build secure URLs using query parameter authentication to bypass iframe cookie limits
+  const getSecureQueryParams = () => {
+    const adminToken = getCookie('admin_session_token') || '';
+    const chatSessionIdCookie = getCookie('chat_session_id') || '';
+    const parts: string[] = [];
+    
+    if (sessionId) {
+      parts.push(`chatId=${encodeURIComponent(sessionId)}`);
+    } else if (chatSessionIdCookie) {
+      parts.push(`chatId=${encodeURIComponent(chatSessionIdCookie)}`);
+    }
+    
+    if (adminToken) {
+      parts.push(`adminToken=${encodeURIComponent(adminToken)}`);
+    }
+    
+    return parts.length > 0 ? `?${parts.join('&')}` : '';
+  };
+
+  const queryParam = getSecureQueryParams();
+
   const fullSrc = hash
     ? `/api/attachments/${hash}/${encodeURIComponent(attachment.name)}${queryParam}`
     : attachment.data;
@@ -75,6 +104,38 @@ export const ImageAttachment: React.FC<ImageAttachmentProps> = ({
   const thumbSrc = hash
     ? `/api/attachments/${hash}/thumbnail${queryParam}`
     : attachment.data;
+
+  // Determine actual image source based on fallback stage
+  let currentSrc = thumbSrc;
+  if (fallbackStage === 1) {
+    currentSrc = fullSrc;
+  } else if (fallbackStage === 2) {
+    currentSrc = attachment.data || '';
+  }
+
+  const handleImageLoad = () => {
+    setIsLoading(false);
+    setHasError(false);
+  };
+
+  const handleImageError = () => {
+    // If thumbnail fails, try full image
+    if (fallbackStage === 0) {
+      setFallbackStage(1);
+      setIsLoading(true);
+    } 
+    // If full image fails, try original raw URL
+    else if (fallbackStage === 1) {
+      setFallbackStage(2);
+      setIsLoading(true);
+    } 
+    // If all fail, mark as error
+    else {
+      setFallbackStage(3);
+      setIsLoading(false);
+      setHasError(true);
+    }
+  };
 
   const handleDownload = (e: React.MouseEvent) => {
     e.stopPropagation(); // Avoid triggering lightbox close/open
@@ -99,27 +160,24 @@ export const ImageAttachment: React.FC<ImageAttachmentProps> = ({
         }`}
       >
         {/* Aspect Ratio Box */}
-        <div className="relative aspect-16/10 w-full overflow-hidden bg-slate-50/50">
+        <div className="relative aspect-[16/10] w-full overflow-hidden bg-slate-50/50">
           {isLoading && !hasError && (
             <div className="absolute inset-0 flex items-center justify-center bg-slate-50 animate-pulse">
               <Loader2 className="w-5 h-5 text-slate-400 animate-spin" />
             </div>
           )}
 
-          {hasError ? (
+          {hasError || fallbackStage === 3 ? (
             <div className="absolute inset-0 flex flex-col items-center justify-center p-3 text-slate-400 bg-slate-50/80">
               <ImageIcon className="w-6 h-6 text-slate-300 mb-1" />
               <span className="text-[10px] font-semibold text-slate-400">Failed to load preview</span>
             </div>
           ) : (
             <img
-              src={thumbSrc}
+              src={currentSrc}
               alt={attachment.name}
-              onLoad={() => setIsLoading(false)}
-              onError={() => {
-                setIsLoading(false);
-                setHasError(true);
-              }}
+              onLoad={handleImageLoad}
+              onError={handleImageError}
               className={`h-full w-full object-cover transition-transform duration-300 ease-out group-hover:scale-104 ${
                 isLoading ? 'opacity-0' : 'opacity-100'
               }`}
@@ -128,7 +186,7 @@ export const ImageAttachment: React.FC<ImageAttachmentProps> = ({
           )}
 
           {/* Hover Overlay */}
-          {!hasError && !isLoading && (
+          {!hasError && !isLoading && fallbackStage !== 3 && (
             <div className="absolute inset-0 bg-black/3 opacity-0 group-hover:opacity-100 transition-opacity duration-200 flex items-center justify-center">
               <div className="bg-white/90 backdrop-blur-xs p-2 rounded-full shadow-md translate-y-2 group-hover:translate-y-0 transition-all duration-250 ease-out">
                 <Maximize2 className="w-3.5 h-3.5 text-slate-700" />

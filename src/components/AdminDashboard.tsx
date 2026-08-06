@@ -468,8 +468,13 @@ export default function AdminDashboard({ onBackToHome }: AdminDashboardProps) {
         setChats(chatsData);
         setAgents(agentsData);
         
-        if (!selectedChatId && chatsData.length > 0) {
-          setSelectedChatId(chatsData[0].id);
+        if (chatsData.length > 0) {
+          const exists = chatsData.some(c => c.id === selectedChatId);
+          if (!selectedChatId || !exists) {
+            setSelectedChatId(chatsData[0].id);
+          }
+        } else {
+          setSelectedChatId(null);
         }
         setErrorText(null);
       } else {
@@ -651,11 +656,58 @@ export default function AdminDashboard({ onBackToHome }: AdminDashboardProps) {
   const canTransferCase = isSupervisorSelected;
   const isUnassignedQueueCase = Boolean((selectedChat?.status === 'pending' || selectedChat?.status === 'bot') && !selectedChat?.agentId && isSupervisorSelected);
 
+  const lastResetChatIdRef = useRef<string | null>(null);
+
+  const resetCustomerStates = useCallback(() => {
+    setAgentReply('');
+    setInternalNotesText('');
+    setActiveCopilotSuggestion(null);
+    setCopilotError(null);
+    setIsPolishingText(false);
+    setIsGeneratingCopilot(false);
+    setSelectedTemplate('');
+    setTransferTargetAgent('');
+    setTransferDropdownOpen(false);
+    setIsAdminRecording(false);
+    setPlayingAudioId(null);
+    setAudioCurrentTimes({});
+    setAudioDurations({});
+    
+    // Interactive builders
+    setIsAddingInstruction(false);
+    setInstTitle('');
+    setInstDesc('');
+    
+    // Payment builder
+    setIsEditingPayment(false);
+    setPayEnabled(false);
+    setPayAmount(0);
+    setPayCurrency('HKD');
+    setPayStatus('Awaiting Transfer');
+    setPayRef('');
+    setPayDeadline('');
+    setPayNotes('');
+    
+    // Case statuses
+    setCsTitle('Case Status');
+    setCsSubtitle('Received');
+    setRaTitle('REQUIRED ACTIONS');
+    setRaHeading('');
+    setRaContent('');
+    setActiveCaseTags([]);
+  }, []);
+
   useEffect(() => {
     if (typingTimeoutRef.current) {
       clearTimeout(typingTimeoutRef.current);
       typingTimeoutRef.current = null;
     }
+
+    if (selectedChatId !== lastResetChatIdRef.current) {
+      lastResetChatIdRef.current = selectedChatId;
+      resetCustomerStates();
+    }
+
     if (selectedChat) {
       setPayEnabled(selectedChat.paymentConfig?.enabled || false);
       setPayAmount(selectedChat.paymentConfig?.amount || 0);
@@ -678,7 +730,7 @@ export default function AdminDashboard({ onBackToHome }: AdminDashboardProps) {
         setActiveCaseTags(['tag-1', 'tag-5']);
       }
     }
-  }, [selectedChat?.id]);
+  }, [selectedChatId, selectedChat, resetCustomerStates]);
 
   useEffect(() => {
     const textarea = agentTextareaRef.current;

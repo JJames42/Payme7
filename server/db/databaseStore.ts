@@ -309,7 +309,24 @@ export interface DatabaseFullState {
   transactionStore: TransactionStore;
 }
 
-const DATA_DIR = path.resolve(process.cwd(), 'data');
+const getStorageDir = (): string => {
+  if (process.env.PERSISTENT_DIR) {
+    return process.env.PERSISTENT_DIR;
+  }
+  const renderDataPath = '/data';
+  try {
+    if (fs.existsSync(renderDataPath)) {
+      const testFile = path.join(renderDataPath, '.write-test');
+      fs.writeFileSync(testFile, 'test');
+      fs.unlinkSync(testFile);
+      return renderDataPath;
+    }
+  } catch (e) {}
+  return process.cwd();
+};
+
+const STORAGE_DIR = getStorageDir();
+const DATA_DIR = path.resolve(STORAGE_DIR, 'data');
 const BACKUP_DIR = path.resolve(DATA_DIR, 'backups');
 const PRIMARY_DB_FILE = path.resolve(DATA_DIR, 'app_database.json');
 const LATEST_BACKUP_JSON = path.resolve(BACKUP_DIR, 'db_backup_latest.json');

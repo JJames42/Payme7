@@ -347,7 +347,24 @@ async function optimizeDocument(buffer: Buffer, originalMime: string, filename: 
   }
 }
 
-const UPLOADS_DIR = path.join(process.cwd(), 'uploads');
+const getStorageDir = (): string => {
+  if (process.env.PERSISTENT_DIR) {
+    return process.env.PERSISTENT_DIR;
+  }
+  const renderDataPath = '/data';
+  try {
+    if (fs.existsSync(renderDataPath)) {
+      const testFile = path.join(renderDataPath, '.write-test');
+      fs.writeFileSync(testFile, 'test');
+      fs.unlinkSync(testFile);
+      return renderDataPath;
+    }
+  } catch (e) {}
+  return process.cwd();
+};
+
+const STORAGE_DIR = getStorageDir();
+const UPLOADS_DIR = path.join(STORAGE_DIR, 'uploads');
 if (!fs.existsSync(UPLOADS_DIR)) {
   fs.mkdirSync(UPLOADS_DIR, { recursive: true });
 }

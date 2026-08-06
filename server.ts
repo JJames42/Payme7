@@ -1059,10 +1059,35 @@ interface ChatSession {
 // Default initial database in case persistent file is empty/non-existent
 const DEFAULT_SESSIONS: ChatSession[] = [];
 
+const getStorageDir = (): string => {
+  if (process.env.PERSISTENT_DIR) {
+    return process.env.PERSISTENT_DIR;
+  }
+  const renderDataPath = '/data';
+  try {
+    if (fs.existsSync(renderDataPath)) {
+      const testFile = path.join(renderDataPath, '.write-test');
+      fs.writeFileSync(testFile, 'test');
+      fs.unlinkSync(testFile);
+      return renderDataPath;
+    }
+  } catch (e) {}
+  return process.cwd();
+};
+
+const STORAGE_DIR = getStorageDir();
+console.log(`[Storage] Persistent storage directory resolved to: ${STORAGE_DIR}`);
+
 let chatSessions: ChatSession[] = [];
 const deletedChatIds = new Set<string>();
-const SESSIONS_FILE = path.join(process.cwd(), 'chat-sessions.json');
-const PRESENCE_FILE = path.join(process.cwd(), 'presence-state.json');
+const SESSIONS_FILE = path.join(STORAGE_DIR, 'chat-sessions.json');
+const PRESENCE_FILE = path.join(STORAGE_DIR, 'presence-state.json');
+const GLOBAL_UPLOADS_DIR = path.join(STORAGE_DIR, 'uploads');
+
+// Ensure the directory exists
+if (!fs.existsSync(GLOBAL_UPLOADS_DIR)) {
+  fs.mkdirSync(GLOBAL_UPLOADS_DIR, { recursive: true });
+}
 
 // --- Real-time Admin & Customer Presence State Tracker ---
 let lastAdminHeartbeatTime = 0;
@@ -3248,7 +3273,7 @@ app.post('/api/chats/:id/visitor-info', presenceRateLimiter, (req, res) => {
 // Endpoint to stream optimized attachment files with range support and long-lived client-side caching
 app.get('/api/attachments/:hash/:filename?', (req, res) => {
   const { hash } = req.params;
-  const uploadsDir = path.join(process.cwd(), 'uploads');
+  const uploadsDir = GLOBAL_UPLOADS_DIR;
   const filePath = path.join(uploadsDir, hash);
   const metaPath = path.join(uploadsDir, `${hash}.json`);
 
@@ -3338,7 +3363,7 @@ app.get('/api/attachments/:hash/:filename?', (req, res) => {
 // Endpoint to fetch cached image/video thumbnails
 app.get('/api/attachments/:hash/thumbnail', (req, res) => {
   const { hash } = req.params;
-  const uploadsDir = path.join(process.cwd(), 'uploads');
+  const uploadsDir = GLOBAL_UPLOADS_DIR;
   const thumbPath = path.join(uploadsDir, `${hash}_thumb`);
   const filePath = path.join(uploadsDir, hash);
 
@@ -4498,7 +4523,7 @@ async function runOrphanGarbageCollection() {
       return;
     }
 
-    const uploadsDir = path.join(process.cwd(), 'uploads');
+    const uploadsDir = GLOBAL_UPLOADS_DIR;
     if (!fs.existsSync(uploadsDir)) {
       console.log('[Garbage Collector] No uploads directory found. Skipping.');
       return;

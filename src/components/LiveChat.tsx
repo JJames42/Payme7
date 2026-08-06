@@ -1392,13 +1392,31 @@ Description: ${formDesc.trim() || 'None Provided'}`;
         });
 
         if (!res.ok) throw new Error('Failed to retrieve chat session');
-        const data: ChatSession = await res.json();
-        if (data.isDeleted) {
+        let data: ChatSession = await res.json();
+        
+        // If the session was deleted or already resolved, do not reuse it. Create a clean new session.
+        if (data.isDeleted || data.status === 'resolved') {
           localStorage.removeItem('payme_chat_session_id');
-          setSession(null);
-          setBotStep(0);
-          return;
+          const cleanRes = await fetch('/api/chats/create', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              language: customerLanguage,
+              userName: 'Website Visitor',
+              visitorInfo: vInfo,
+              connectionStatus
+            })
+          });
+          if (cleanRes.ok) {
+            data = await cleanRes.json();
+          } else {
+            localStorage.removeItem('payme_chat_session_id');
+            setSession(null);
+            setBotStep(0);
+            return;
+          }
         }
+        
         setSession(data);
         localStorage.setItem('payme_chat_session_id', data.id);
         
