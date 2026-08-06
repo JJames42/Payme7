@@ -42,15 +42,7 @@ export async function closePgPool(): Promise<void> {
   }
 }
 
-// Graceful process shutdown handlers
-if (typeof process !== 'undefined') {
-  const shutdownHandler = async (signal: string) => {
-    console.log(`[Neon Postgres] Signal ${signal} received. Closing pool...`);
-    await closePgPool();
-  };
-  process.once('SIGINT', () => shutdownHandler('SIGINT'));
-  process.once('SIGTERM', () => shutdownHandler('SIGTERM'));
-}
+// Process shutdown is handled by the orchestrator in server.ts to avoid database persistence race conditions.
 
 async function initPgSchema(pool: pg.Pool): Promise<void> {
   if (schemaInitialized) return;

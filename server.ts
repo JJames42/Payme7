@@ -17,7 +17,8 @@ import {
   DatabaseFullState,
   AIWorkspaceStore,
   AdminSessionRecord,
-  TransactionStore
+  TransactionStore,
+  closePgPool
 } from './server/db/databaseStore.js';
 
 // Configure dotenv to parse variables from the environment/secrets
@@ -423,7 +424,7 @@ async function addMessageToSession(
 }
 
 const app = express();
-const PORT = 3000;
+const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
 
 // Enable gzip compression for HTTP responses
 app.use(compression());
@@ -518,7 +519,7 @@ function createRateLimiter(options: { windowMs: number; max: number; name: strin
   const store = new Map<string, RateLimitRecord>();
 
   // Periodically clean expired records
-  setInterval(() => {
+  const cleanInterval = setInterval(() => {
     const now = Date.now();
     for (const [key, record] of store.entries()) {
       if (now > record.resetTime) {
@@ -526,6 +527,9 @@ function createRateLimiter(options: { windowMs: number; max: number; name: strin
       }
     }
   }, 5 * 60 * 1000);
+  if (typeof cleanInterval.unref === 'function') {
+    cleanInterval.unref();
+  }
 
   return (req: express.Request, res: express.Response, next: express.NextFunction) => {
     const ip = (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() || req.socket.remoteAddress || '127.0.0.1';
@@ -1174,6 +1178,8 @@ function saveSessionsToDisk() {
   isSavingDatabaseState = true;
   try {
     fs.writeFileSync(SESSIONS_FILE, JSON.stringify(chatSessions, null, 2), 'utf8');
+    // Ensure changes are also debounced and persisted to Neon PostgreSQL
+    saveDatabaseStateDebounced();
   } catch (err) {
     console.error('[Persistence] Error saving chat sessions to disk:', err);
   } finally {
@@ -1275,6 +1281,67 @@ function saveDatabaseStateDebounced() {
       isSavingDatabaseState = false;
     });
   }, 2000);
+  if (saveDbDebounceTimer && typeof saveDbDebounceTimer.unref === 'function') {
+    saveDbDebounceTimer.unref();
+  }
+}
+
+// Flush any pending/unsaved database changes immediately (e.g. during graceful shutdown)
+async function flushPendingDatabaseState(): Promise<void> {
+  if (saveDbDebounceTimer) {
+    clearTimeout(saveDbDebounceTimer);
+    saveDbDebounceTimer = null;
+  }
+  const currentStateKey = getFunctionalStateKey();
+  if (currentStateKey === lastSavedFunctionalStateKey && lastSavedFunctionalStateKey !== '') {
+    return; // No unsaved changes
+  }
+
+  const adminSessionsObj: Record<string, AdminSessionRecord> = {};
+  activeAdminSessions.forEach((sess, tok) => {
+    adminSessionsObj[tok] = sess;
+  });
+
+  const fullState: DatabaseFullState = {
+    aiWorkspace: aiWorkspaceStore,
+    adminSessions: adminSessionsObj,
+    adminSettings: {
+      lastAdminHeartbeatTime,
+      activeAdminSupervisorId,
+      activeAdminChatId,
+      agentLastActiveMap
+    },
+    liveChatSettings: {
+      chatSessions,
+      deletedChatIds: Array.from(deletedChatIds)
+    },
+    transactionStore: currentTransactionStore
+  };
+  lastSavedFunctionalStateKey = currentStateKey;
+  console.log('[Database Storage] Synchronous/immediate flush of app state before exit...');
+  await saveFullStateToDatabase(fullState);
+}
+
+// Graceful process shutdown orchestration
+if (typeof process !== 'undefined') {
+  const shutdownOrchestrator = async (signal: string) => {
+    console.log(`[Server] Signal ${signal} received. Starting graceful shutdown sequence...`);
+    try {
+      await flushPendingDatabaseState();
+      console.log('[Server] Pending database state successfully flushed.');
+    } catch (err) {
+      console.error('[Server] Error flushing pending state on shutdown:', err);
+    }
+    try {
+      await closePgPool();
+    } catch (err) {
+      console.error('[Server] Error closing Postgres connection pool on shutdown:', err);
+    }
+    console.log('[Server] Graceful shutdown sequence completed. Exiting.');
+    process.exit(0);
+  };
+  process.once('SIGINT', () => shutdownOrchestrator('SIGINT'));
+  process.once('SIGTERM', () => shutdownOrchestrator('SIGTERM'));
 }
 
 // Initialize AI Workspace Store from persistent database storage
@@ -4165,7 +4232,7 @@ function closeResolvedSession(session: ChatSession) {
 
 // Automatic background timer: Check for inactive resolved chats and auto-close them after 10 minutes
 const TEN_MINUTES_MS = 10 * 60 * 1000;
-setInterval(() => {
+const inactiveResolvedChatsInterval = setInterval(() => {
   let changed = false;
   const now = Date.now();
   for (const session of chatSessions) {
@@ -4183,6 +4250,9 @@ setInterval(() => {
     saveSessionsToDisk();
   }
 }, 10000);
+if (typeof inactiveResolvedChatsInterval.unref === 'function') {
+  inactiveResolvedChatsInterval.unref();
+}
 
 // 16. Update Live Typing Status
 app.post('/api/chats/:id/typing', typingRateLimiter, (req, res) => {
@@ -4679,8 +4749,14 @@ async function startServer() {
     console.log(`[PayMe Business Full-Stack Server] Running on http://localhost:${PORT}`);
     
     // Start Safe Garbage Collection background worker
-    setTimeout(runOrphanGarbageCollection, 15000); // Delayed initial boot scan (15s)
-    setInterval(runOrphanGarbageCollection, 12 * 60 * 60 * 1000); // Periodic clean every 12 hours
+    const initialGcTimer = setTimeout(runOrphanGarbageCollection, 15000); // Delayed initial boot scan (15s)
+    if (typeof initialGcTimer.unref === 'function') {
+      initialGcTimer.unref();
+    }
+    const periodicGcInterval = setInterval(runOrphanGarbageCollection, 12 * 60 * 60 * 1000); // Periodic clean every 12 hours
+    if (typeof periodicGcInterval.unref === 'function') {
+      periodicGcInterval.unref();
+    }
   });
 }
 
