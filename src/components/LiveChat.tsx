@@ -395,6 +395,13 @@ function CsatRatingCard({
 }
 
 export default function LiveChat({ onBackToHome, sessionId: propSessionId }: LiveChatProps) {
+  const clearCustomerSession = () => {
+    localStorage.removeItem('payme_chat_session_id');
+    localStorage.removeItem('payme_customer_name');
+    localStorage.removeItem('payme_customer_email');
+    localStorage.removeItem('payme_customer_phone');
+  };
+
   const [customerLanguage, setCustomerLanguage] = useState<'en' | 'hk'>(() => {
     return (localStorage.getItem('payme_customer_language') as 'en' | 'hk') || 'en';
   });
@@ -1368,14 +1375,14 @@ Description: ${formDesc.trim() || 'None Provided'}`;
           sid = localStorage.getItem('payme_chat_session_id') || undefined;
           if (sid === 'chat-active-1' || sid === 'chat-pending-1') {
             sid = undefined;
-            localStorage.removeItem('payme_chat_session_id');
+            clearCustomerSession();
           }
         }
 
         const vInfo = collectVisitorInfo();
-        const storedName = localStorage.getItem('payme_customer_name') || '';
-        const storedEmail = localStorage.getItem('payme_customer_email') || '';
-        const storedPhone = localStorage.getItem('payme_customer_phone') || '';
+        const storedName = sid ? (localStorage.getItem('payme_customer_name') || '') : '';
+        const storedEmail = sid ? (localStorage.getItem('payme_customer_email') || '') : '';
+        const storedPhone = sid ? (localStorage.getItem('payme_customer_phone') || '') : '';
 
         const res = await fetch('/api/chats/create', {
           method: 'POST',
@@ -1396,7 +1403,7 @@ Description: ${formDesc.trim() || 'None Provided'}`;
         
         // If the session was deleted or already resolved, do not reuse it. Create a clean new session.
         if (data.isDeleted || data.status === 'resolved') {
-          localStorage.removeItem('payme_chat_session_id');
+          clearCustomerSession();
           const cleanRes = await fetch('/api/chats/create', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -1410,7 +1417,7 @@ Description: ${formDesc.trim() || 'None Provided'}`;
           if (cleanRes.ok) {
             data = await cleanRes.json();
           } else {
-            localStorage.removeItem('payme_chat_session_id');
+            clearCustomerSession();
             setSession(null);
             setBotStep(0);
             return;
@@ -1502,7 +1509,7 @@ Description: ${formDesc.trim() || 'None Provided'}`;
         if (res.ok) {
           const data: any = await res.json();
           if (data.isDeleted) {
-            localStorage.removeItem('payme_chat_session_id');
+            clearCustomerSession();
             setSession(null);
             setBotStep(0);
             return;
@@ -3221,7 +3228,7 @@ Description: ${formDesc}`;
                 </div>
                 <button 
                   type="button"
-                  onClick={() => { localStorage.removeItem('payme_chat_session_id'); window.location.reload(); }}
+                  onClick={() => { clearCustomerSession(); window.location.reload(); }}
                   className="px-2.5 py-1 bg-red-800 hover:bg-red-900 border border-red-700 rounded-lg text-[10px] font-bold text-white transition-colors"
                 >
                   Change
@@ -3894,9 +3901,9 @@ Description: ${formDesc}`;
                   </div>
                   <div className="text-[11px] text-slate-500">
                     {customerLanguage === 'hk' ? (
-                      <>點擊 <button onClick={() => { localStorage.removeItem('payme_chat_session_id'); window.location.reload(); }} className="text-[#DB0011] underline font-bold cursor-pointer">這裡</button> 開啟新對話。</>
+                      <>點擊 <button onClick={() => { clearCustomerSession(); window.location.reload(); }} className="text-[#DB0011] underline font-bold cursor-pointer">這裡</button> 開啟新對話。</>
                     ) : (
-                      <>Click <button onClick={() => { localStorage.removeItem('payme_chat_session_id'); window.location.reload(); }} className="text-[#DB0011] underline font-bold cursor-pointer">here</button> to start a new support conversation.</>
+                      <>Click <button onClick={() => { clearCustomerSession(); window.location.reload(); }} className="text-[#DB0011] underline font-bold cursor-pointer">here</button> to start a new support conversation.</>
                     )}
                   </div>
                 </div>
