@@ -1433,6 +1433,46 @@ Description: ${formDesc.trim() || 'None Provided'}`;
     };
   };
 
+  // Helper to ensure a session is created ONCE when the customer intentionally starts chatting
+  const ensureSessionCreated = async (options?: { topic?: string; name?: string; email?: string }): Promise<ChatSession | null> => {
+    if (session) return session;
+
+    try {
+      setLoading(true);
+      const vInfo = collectVisitorInfo();
+      const storedName = typeof localStorage !== 'undefined' ? localStorage.getItem('payme_customer_name') || '' : '';
+      const storedEmail = typeof localStorage !== 'undefined' ? localStorage.getItem('payme_customer_email') || '' : '';
+      const storedPhone = typeof localStorage !== 'undefined' ? localStorage.getItem('payme_customer_phone') || '' : '';
+
+      const res = await fetch('/api/chats/create', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          language: customerLanguage,
+          userName: options?.name || formName || storedName || 'Website Visitor',
+          userEmail: options?.email || formEmail || storedEmail || '',
+          phone: storedPhone || undefined,
+          selectedTopic: options?.topic || formCategory || '',
+          visitorInfo: vInfo,
+          connectionStatus
+        })
+      });
+
+      if (!res.ok) throw new Error('Failed to create chat session');
+      const data: ChatSession = await res.json();
+      setSession(data);
+      if (typeof localStorage !== 'undefined') {
+        localStorage.setItem('payme_chat_session_id', data.id);
+      }
+      return data;
+    } catch (err) {
+      console.error('Failed to create chat session:', err);
+      return null;
+    } finally {
+      setLoading(false);
+    }
+  };
+
   // Initialize and check current URL path
   useEffect(() => {
     const initChat = async () => {
@@ -1442,11 +1482,20 @@ Description: ${formDesc.trim() || 'None Provided'}`;
       try {
         let sid = propSessionId;
         if (!sid) {
-          sid = localStorage.getItem('payme_chat_session_id') || undefined;
+          sid = typeof localStorage !== 'undefined' ? localStorage.getItem('payme_chat_session_id') || undefined : undefined;
           if (sid === 'chat-active-1' || sid === 'chat-pending-1') {
             sid = undefined;
             clearCustomerSession();
           }
+        }
+
+        // If no pre-existing session ID in props or localStorage, DO NOT create a session!
+        if (!sid) {
+          setSession(null);
+          setBotStep(-1); // Read-only issue-selection screen
+          isInitializingChatRef.current = false;
+          setLoading(false);
+          return;
         }
 
         if (activeInitPromise && activeInitId === sid) {
@@ -1493,57 +1542,41 @@ Description: ${formDesc.trim() || 'None Provided'}`;
           rejectPromise = reject;
         });
 
-        const vInfo = collectVisitorInfo();
-        const storedName = sid ? (localStorage.getItem('payme_customer_name') || '') : '';
-        const storedEmail = sid ? (localStorage.getItem('payme_customer_email') || '') : '';
-        const storedPhone = sid ? (localStorage.getItem('payme_customer_phone') || '') : '';
+        // Read-only GET request to restore existing session
+        const res = await fetch(`/api/chats/${sid}`);
 
-        const res = await fetch('/api/chats/create', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            id: sid,
-            language: customerLanguage,
-            userName: formName || storedName || 'Website Visitor',
-            userEmail: formEmail || storedEmail || '',
-            phone: storedPhone || undefined,
-            visitorInfo: vInfo,
-            connectionStatus
-          })
-        });
+        if (!res.ok) {
+          // Existing session not found or deleted - clear local session
+          clearCustomerSession();
+          setSession(null);
+          setBotStep(-1);
+          isInitializingChatRef.current = false;
+          resolvePromise(null);
+          activeInitPromise = null;
+          activeInitId = null;
+          setLoading(false);
+          return;
+        }
 
-        if (!res.ok) throw new Error('Failed to retrieve chat session');
         let data: ChatSession = await res.json();
         
-        // If the session was deleted or already closed, do not reuse it. Create a clean new session.
+        // If the session was deleted or already closed, do not reuse it.
         if (data.isDeleted || data.isClosed) {
           clearCustomerSession();
-          const cleanRes = await fetch('/api/chats/create', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              language: customerLanguage,
-              userName: 'Website Visitor',
-              visitorInfo: vInfo,
-              connectionStatus
-            })
-          });
-          if (cleanRes.ok) {
-            data = await cleanRes.json();
-          } else {
-            clearCustomerSession();
-            setSession(null);
-            setBotStep(0);
-            isInitializingChatRef.current = false;
-            resolvePromise(null);
-            activeInitPromise = null;
-            activeInitId = null;
-            return;
-          }
+          setSession(null);
+          setBotStep(-1);
+          isInitializingChatRef.current = false;
+          resolvePromise(null);
+          activeInitPromise = null;
+          activeInitId = null;
+          setLoading(false);
+          return;
         }
         
         setSession(data);
-        localStorage.setItem('payme_chat_session_id', data.id);
+        if (typeof localStorage !== 'undefined') {
+          localStorage.setItem('payme_chat_session_id', data.id);
+        }
         
         // Match local bot step with server state
         if (data.status === 'bot') {
@@ -1571,7 +1604,6 @@ Description: ${formDesc.trim() || 'None Provided'}`;
         resolvePromise(data);
       } catch (err: any) {
         isInitializingChatRef.current = false; // Allow retry on failure
-        setErrorMessage('Connecting to secure gateway. Re-routing...');
         console.error(err);
         activeInitPromise = null;
         activeInitId = null;
@@ -2212,7 +2244,12 @@ Description: ${formDesc.trim() || 'None Provided'}`;
   };
 
   const sendVoiceMessage = async (base64: string, durationSec: number) => {
-    if (!session) return;
+    let activeSession = session;
+    if (!activeSession) {
+      activeSession = await ensureSessionCreated();
+      if (!activeSession) return;
+    }
+
     try {
       const voiceAttachment: Attachment = {
         name: `voice-note-${Date.now()}.webm`,
@@ -2242,7 +2279,7 @@ Description: ${formDesc.trim() || 'None Provided'}`;
       setRecordingBlob(null);
       setRecordDuration(0);
 
-      const res = await fetch(`/api/chats/${session.id}/messages`, {
+      const res = await fetch(`/api/chats/${activeSession.id}/messages`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -2263,8 +2300,6 @@ Description: ${formDesc.trim() || 'None Provided'}`;
 
   // Complete Bot Steps and Hand off to Specialist
   const handleNextBotStep = async () => {
-    if (!session) return;
-
     if (botStep === 0) {
       if (!formName.trim()) {
         alert('Please enter your name to proceed.');
@@ -2295,6 +2330,16 @@ Description: ${formDesc.trim() || 'None Provided'}`;
       
       setBotStep(4); // Animated loading progress
 
+      let activeSession = session;
+      if (!activeSession) {
+        activeSession = await ensureSessionCreated({
+          name: formName.trim(),
+          email: formEmail.trim(),
+          topic: formCategory
+        });
+        if (!activeSession) return;
+      }
+
       try {
         // Post details to backend
         const summaryText = `[AI Verification Intake]
@@ -2312,7 +2357,7 @@ Description: ${formDesc}`;
         }
 
         // Create case status update on server
-        await fetch(`/api/chats/${session.id}/topic`, {
+        await fetch(`/api/chats/${activeSession.id}/topic`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -2325,7 +2370,7 @@ Description: ${formDesc}`;
         });
 
         // Send messages
-        await fetch(`/api/chats/${session.id}/messages`, {
+        await fetch(`/api/chats/${activeSession.id}/messages`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -2335,7 +2380,7 @@ Description: ${formDesc}`;
         });
 
         // Trigger bot connection notice
-        const res = await fetch(`/api/chats/${session.id}/messages`, {
+        const res = await fetch(`/api/chats/${activeSession.id}/messages`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -2447,7 +2492,14 @@ Description: ${formDesc}`;
   // Unified message submission (Text + Voice via same Send icon)
   const handleSendText = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
-    if (!session || session.isLocked || session.isBlocked) return;
+    
+    let activeSession = session;
+    if (!activeSession) {
+      activeSession = await ensureSessionCreated();
+      if (!activeSession) return;
+    }
+
+    if (activeSession.isLocked || activeSession.isBlocked) return;
 
     // 1. If actively recording when Send icon is clicked, stop and send immediately
     if (isRecording) {
@@ -2457,7 +2509,7 @@ Description: ${formDesc}`;
         setInputMessage('');
         triggerTypingStatus(false);
         try {
-          await fetch(`/api/chats/${session.id}/messages`, {
+          await fetch(`/api/chats/${activeSession.id}/messages`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ sender: 'customer', text: textToSubmit })
@@ -2514,7 +2566,7 @@ Description: ${formDesc}`;
 
     try {
       // 1. Post customer text message
-      const res = await fetch(`/api/chats/${session.id}/messages`, {
+      const res = await fetch(`/api/chats/${activeSession.id}/messages`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -2532,7 +2584,7 @@ Description: ${formDesc}`;
       setSession(updated);
 
       // 2. If session is in bot mode, perform real-time email verification on customer input
-      if (session.status === 'bot') {
+      if (activeSession.status === 'bot') {
         const emailErr = validateEmail(text);
         if (emailErr) {
           // Invalid email! Show typing for 15s-25s then present concise error
@@ -2547,7 +2599,7 @@ Description: ${formDesc}`;
               : "Please enter a valid registered email address (e.g., name@example.com) so we can locate your account.";
 
             try {
-              const botRes = await fetch(`/api/chats/${session.id}/messages`, {
+              const botRes = await fetch(`/api/chats/${activeSession.id}/messages`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -2570,7 +2622,7 @@ Description: ${formDesc}`;
           setFormEmail(verifiedEmail);
           if (typeof localStorage !== 'undefined') localStorage.setItem('payme_customer_email', verifiedEmail);
           const currentStoredName = typeof localStorage !== 'undefined' ? localStorage.getItem('payme_customer_name') || '' : '';
-          const newName = formName || currentStoredName || (session.userName && !session.userName.includes('Shopify') && !session.userName.includes('Anonymous') && session.userName !== 'Website Visitor' ? session.userName : verifiedEmail);
+          const newName = formName || currentStoredName || (activeSession.userName && !activeSession.userName.includes('Shopify') && !activeSession.userName.includes('Anonymous') && activeSession.userName !== 'Website Visitor' ? activeSession.userName : verifiedEmail);
           setFormName(newName);
           if (typeof localStorage !== 'undefined') localStorage.setItem('payme_customer_name', newName);
           setIsBotTyping(true);
@@ -2581,11 +2633,11 @@ Description: ${formDesc}`;
             setIsBotTyping(false);
 
             // Update backend session user email and transfer case to human agent queue
-            await fetch(`/api/chats/${session.id}/topic`, {
+            await fetch(`/api/chats/${activeSession.id}/topic`, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({
-                topic: formCategory || session.selectedTopic || 'General Support',
+                topic: formCategory || activeSession.selectedTopic || 'General Support',
                 userName: newName,
                 userEmail: verifiedEmail,
                 phone: typeof localStorage !== 'undefined' ? localStorage.getItem('payme_customer_phone') || undefined : undefined,
@@ -2598,7 +2650,7 @@ Description: ${formDesc}`;
               : "Your request has been received. We are connecting you with an available support human specialist.";
 
             try {
-              const botRes = await fetch(`/api/chats/${session.id}/messages`, {
+              const botRes = await fetch(`/api/chats/${activeSession.id}/messages`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -3024,7 +3076,7 @@ Description: ${formDesc}`;
           {/* Scrollable Container with Overlapping Cards */}
           <div className="flex-1 px-4 sm:px-16 relative z-20 -mt-[28px] sm:-mt-[70px] pb-3 sm:pb-6 space-y-3 sm:space-y-5 sm:max-w-[780px] sm:mx-auto w-full">
             
-            {!session ? (
+            {loading && propSessionId ? (
               /* Loading Spinner inside a Card */
               <div className="bg-white border border-slate-100 p-12 rounded-2xl shadow-lg flex flex-col items-center justify-center gap-4">
                 <RefreshCw className="w-8 h-8 text-[#bd162c] animate-spin" />

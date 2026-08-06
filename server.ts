@@ -3318,6 +3318,32 @@ ${text}`;
   }
 });
 
+// GET Existing Chat Session (Read-Only, does not create session)
+app.get('/api/chats/:id', (req, res) => {
+  const { id } = req.params;
+  if (!id || deletedChatIds.has(id)) {
+    return res.status(404).json({ error: 'Chat session deleted or not found' });
+  }
+
+  const session = chatSessions.find(s => s.id === id);
+  if (!session || session.isDeleted) {
+    return res.status(404).json({ error: 'Chat session not found' });
+  }
+
+  const messageStatuses = session.messages.map(m => `${m.id}:${m.status || ''}`).join('|');
+  const rawSig = `${session.messages.length}-${session.status}-${session.agentTyping ? 'y' : 'n'}-${session.isClosed ? 'y' : 'n'}-${session.isLocked ? 'y' : 'n'}-${session.isBlocked ? 'y' : 'n'}-${session.paymentConfig?.status || ''}-${session.language || 'en'}-${session.timelineProgress || 1}-${session.uploadsMuted ? 'y' : 'n'}-${session.actionsRequiredEnabled ? 'y' : 'n'}-${messageStatuses}`;
+  const stateSig = crypto.createHash('md5').update(rawSig).digest('hex');
+
+  res.cookie('chat_session_id', session.id, {
+    path: '/',
+    httpOnly: true,
+    secure: req.secure || req.headers['x-forwarded-proto'] === 'https',
+    sameSite: 'lax'
+  });
+
+  res.json({ ...session, version: stateSig });
+});
+
 // 3. Create or Locate Chat Session (for Customer)
 app.post('/api/chats/create', sessionCreateRateLimiter, (req, res) => {
   const id = sanitizeString(req.body.id, 100);
