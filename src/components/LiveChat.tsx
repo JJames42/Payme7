@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Message, ChatSession, Attachment, CaseInstruction, Agent, VisitorInfo } from '../types.ts';
+import { ImageAttachment, isImageAttachment } from './ImageAttachment';
 
 const CATEGORY_TRANSLATIONS: Record<string, string> = {
   'Account Issues': '帳戶問題',
@@ -3602,8 +3603,13 @@ Description: ${formDesc}`;
                             );
                           })()}
 
+                          {/* Image attachment */}
+                          {msg.attachment && !msg.attachment.type.startsWith('audio/') && isImageAttachment(msg.attachment.type) && (
+                            <ImageAttachment attachment={msg.attachment} sessionId={session?.id} isAdmin={false} />
+                          )}
+
                           {/* Doc attachment */}
-                          {msg.attachment && !msg.attachment.type.startsWith('audio/') && (
+                          {msg.attachment && !msg.attachment.type.startsWith('audio/') && !isImageAttachment(msg.attachment.type) && (
                             <div className="mt-3 border border-red-200 rounded-xl p-3 bg-white/50 text-slate-800 flex items-center justify-between gap-3 max-w-sm shadow-sm">
                               <div className="flex items-center gap-2 min-w-0">
                                 <div className="w-7 h-7 rounded-lg bg-red-50 flex items-center justify-center border border-red-100 shrink-0">
@@ -3752,8 +3758,13 @@ Description: ${formDesc}`;
                               );
                             })()}
 
+                            {/* Image attachment */}
+                            {msg.attachment && !msg.attachment.type.startsWith('audio/') && isImageAttachment(msg.attachment.type) && (
+                              <ImageAttachment attachment={msg.attachment} sessionId={session?.id} isAdmin={false} />
+                            )}
+
                             {/* Doc attachment */}
-                            {msg.attachment && !msg.attachment.type.startsWith("audio/") && (
+                            {msg.attachment && !msg.attachment.type.startsWith("audio/") && !isImageAttachment(msg.attachment.type) && (
                               <div className="mt-3 border border-slate-200 rounded-xl p-3 bg-slate-50 text-slate-800 flex items-center justify-between gap-3 max-w-sm shadow-sm">
                                 <div className="flex items-center gap-2 min-w-0">
                                   <div className="w-7 h-7 rounded-lg bg-red-50 flex items-center justify-center border border-red-100 shrink-0">

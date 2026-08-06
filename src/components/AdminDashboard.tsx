@@ -10,6 +10,7 @@ import {
   LayoutDashboard, ChevronRight, Loader2, Mic, Briefcase, AlertTriangle, ThumbsUp, ThumbsDown, HelpCircle, Lightbulb, Bot
 } from 'lucide-react';
 import { ChatSession, Agent, Transaction, Message, CaseInstruction, AICopilotReplySuggestion } from '../types.ts';
+import { ImageAttachment, isImageAttachment } from './ImageAttachment';
 import { PayMeLogo } from './MerchantLogos';
 import { AdminTicketsView } from './admin/AdminTicketsView';
 import { AdminAnalyticsView } from './admin/AdminAnalyticsView';
@@ -3106,6 +3107,36 @@ export default function AdminDashboard({ onBackToHome }: AdminDashboardProps) {
                                   {playingAudioId === msg.id ? <Pause className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5 translate-x-0.5" />}
                                 </button>
                                 <span className="text-[10px] font-bold">Voice Note ({msg.attachment.duration || '5s'})</span>
+                              </div>
+                            )}
+
+                            {/* Image attachment if present */}
+                            {msg.attachment && !msg.attachment.type.startsWith('audio/') && isImageAttachment(msg.attachment.type) && (
+                              <ImageAttachment attachment={msg.attachment} sessionId={selectedChat.id} isAdmin={true} />
+                            )}
+
+                            {/* Doc attachment if present */}
+                            {msg.attachment && !msg.attachment.type.startsWith('audio/') && !isImageAttachment(msg.attachment.type) && (
+                              <div className="mt-2.5 border border-slate-200 rounded-xl p-3 bg-white/70 text-slate-800 flex items-center justify-between gap-3 max-w-sm shadow-xs">
+                                <div className="flex items-center gap-2 min-w-0">
+                                  <div className="w-7 h-7 rounded-lg bg-rose-50 flex items-center justify-center border border-rose-100 shrink-0">
+                                    <FileText className="w-4 h-4 text-rose-600" />
+                                  </div>
+                                  <div className="min-w-0 text-left">
+                                    <div className="text-[11px] font-bold text-slate-800 truncate" title={msg.attachment.name}>{msg.attachment.name}</div>
+                                    <div className="text-[9px] uppercase mt-0.5 text-slate-500 font-semibold">
+                                      {msg.attachment.type.split('/')[1] || 'file'}
+                                    </div>
+                                  </div>
+                                </div>
+                                <a 
+                                  href={msg.attachment.data} 
+                                  download={msg.attachment.name} 
+                                  className="text-slate-400 hover:text-slate-600 p-1 rounded hover:bg-slate-100/80 transition-colors shrink-0"
+                                  title="Download"
+                                >
+                                  <Download className="w-3.5 h-3.5" />
+                                </a>
                               </div>
                             )}
                           </div>
