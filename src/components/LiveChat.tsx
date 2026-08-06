@@ -424,10 +424,10 @@ export default function LiveChat({ onBackToHome, sessionId: propSessionId }: Liv
   const updateServerLanguage = async (lang: 'en' | 'hk') => {
     if (!session) return;
     try {
-      const res = await fetch('/api/chats/create', {
+      const res = await fetch(`/api/chats/${session.id}/topic`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id: session.id, language: lang })
+        body: JSON.stringify({ language: lang })
       });
       if (res.ok) {
         const data: ChatSession = await res.json();
@@ -798,7 +798,7 @@ export default function LiveChat({ onBackToHome, sessionId: propSessionId }: Liv
         console.warn('Failed to fetch agents:', err);
       }
 
-      if (!document.hidden) {
+      if (!document.hidden && session) {
         timeoutId = setTimeout(fetchAgents, 45000);
       } else {
         isPaused = true;
@@ -1657,18 +1657,8 @@ Description: ${formDesc.trim() || 'None Provided'}`;
       isPollingStopped = false;
 
       try {
-        const vInfo = collectVisitorInfo();
-        const res = await fetch('/api/chats/create', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ 
-            id: session.id,
-            language: customerLanguage,
-            visitorInfo: vInfo,
-            connectionStatus,
-            knownVersion: (session as any).version
-          })
-        });
+        const verParam = (session as any).version ? `?knownVersion=${encodeURIComponent((session as any).version)}` : '';
+        const res = await fetch(`/api/chats/${session.id}${verParam}`);
         
         let nextDelay = 5000;
         

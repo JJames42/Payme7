@@ -424,6 +424,7 @@ async function addMessageToSession(
 }
 
 const app = express();
+app.set('trust proxy', true);
 const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
 
 // Temporary request-logging middleware to identify wake-up triggers
@@ -431,7 +432,7 @@ app.use((req, res, next) => {
   const timestamp = new Date().toISOString();
   const method = req.method;
   const path = req.originalUrl || req.url || req.path;
-  const clientIp = (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() || req.socket.remoteAddress || '-';
+  const clientIp = (req.headers['cf-connecting-ip'] as string) || (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() || req.ip || req.socket.remoteAddress || '-';
   const forwarded = req.headers['x-forwarded-for'] || '-';
   const host = req.headers['host'] || '-';
   const userAgent = req.headers['user-agent'] || '-';
@@ -473,17 +474,21 @@ app.use((req, res, next) => {
     /\/(feed|rss|atom|rdf)(\.xml|\/)?$/i.test(path);
 
   const isScannerUA = 
+    /headlesschrome/i.test(userAgent) ||
     /go-http-client/i.test(userAgent) ||
     /sqlmap/i.test(userAgent) ||
     /nikto/i.test(userAgent) ||
     /dirbuster/i.test(userAgent) ||
     /nmap/i.test(userAgent) ||
     /masscan/i.test(userAgent) ||
-    /zgrab/i.test(userAgent);
+    /zgrab/i.test(userAgent) ||
+    /python/i.test(userAgent) ||
+    /wget/i.test(userAgent) ||
+    /curl\//i.test(userAgent);
 
   if (isScannerPath || isScannerUA) {
     const timestamp = new Date().toISOString();
-    const clientIp = (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() || req.socket.remoteAddress || '-';
+    const clientIp = (req.headers['cf-connecting-ip'] as string) || (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() || req.ip || req.socket.remoteAddress || '-';
     const reason = isScannerPath ? 'Scanner Path Detected' : 'Scanner User-Agent Detected';
     
     console.log(`[Scanner Blocked] ${timestamp} | ${req.method} ${path} | IP=${clientIp} | Reason=${reason} | UA=${userAgent}`);
@@ -494,6 +499,18 @@ app.use((req, res, next) => {
   }
 
   next();
+});
+
+// Explicit Cache-Control handlers for robots.txt and favicon.ico to prevent Render waking from repeated bot checks
+app.get('/robots.txt', (req, res) => {
+  res.setHeader('Content-Type', 'text/plain');
+  res.setHeader('Cache-Control', 'public, max-age=86400, s-maxage=86400');
+  res.send("User-agent: *\nAllow: /\n");
+});
+
+app.get('/favicon.ico', (req, res) => {
+  res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+  res.status(204).end();
 });
 
 // Enable gzip compression for HTTP responses
@@ -3321,6 +3338,8 @@ ${text}`;
 // GET Existing Chat Session (Read-Only, does not create session)
 app.get('/api/chats/:id', (req, res) => {
   const { id } = req.params;
+  const knownVersion = req.query.knownVersion as string | undefined;
+
   if (!id || deletedChatIds.has(id)) {
     return res.status(404).json({ error: 'Chat session deleted or not found' });
   }
@@ -3333,6 +3352,10 @@ app.get('/api/chats/:id', (req, res) => {
   const messageStatuses = session.messages.map(m => `${m.id}:${m.status || ''}`).join('|');
   const rawSig = `${session.messages.length}-${session.status}-${session.agentTyping ? 'y' : 'n'}-${session.isClosed ? 'y' : 'n'}-${session.isLocked ? 'y' : 'n'}-${session.isBlocked ? 'y' : 'n'}-${session.paymentConfig?.status || ''}-${session.language || 'en'}-${session.timelineProgress || 1}-${session.uploadsMuted ? 'y' : 'n'}-${session.actionsRequiredEnabled ? 'y' : 'n'}-${messageStatuses}`;
   const stateSig = crypto.createHash('md5').update(rawSig).digest('hex');
+
+  if (knownVersion && knownVersion === stateSig) {
+    return res.json({ unmodified: true, version: stateSig });
+  }
 
   res.cookie('chat_session_id', session.id, {
     path: '/',
