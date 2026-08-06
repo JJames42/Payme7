@@ -1401,8 +1401,8 @@ Description: ${formDesc.trim() || 'None Provided'}`;
         if (!res.ok) throw new Error('Failed to retrieve chat session');
         let data: ChatSession = await res.json();
         
-        // If the session was deleted or already resolved, do not reuse it. Create a clean new session.
-        if (data.isDeleted || data.status === 'resolved') {
+        // If the session was deleted or already closed, do not reuse it. Create a clean new session.
+        if (data.isDeleted || data.isClosed) {
           clearCustomerSession();
           const cleanRes = await fetch('/api/chats/create', {
             method: 'POST',
