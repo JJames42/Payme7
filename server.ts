@@ -426,6 +426,29 @@ async function addMessageToSession(
 const app = express();
 const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
 
+// Temporary request-logging middleware to identify wake-up triggers
+app.use((req, res, next) => {
+  const timestamp = new Date().toISOString();
+  const method = req.method;
+  const path = req.originalUrl || req.url || req.path;
+  const clientIp = (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() || req.socket.remoteAddress || '-';
+  const forwarded = req.headers['x-forwarded-for'] || '-';
+  const host = req.headers['host'] || '-';
+  const userAgent = req.headers['user-agent'] || '-';
+  const referer = req.headers['referer'] || '-';
+
+  console.log(
+    `[Incoming Request] ${timestamp}\n` +
+    `${method} ${path}\n` +
+    `IP=${clientIp}\n` +
+    `Forwarded=${forwarded}\n` +
+    `Host=${host}\n` +
+    `UA=${userAgent}\n` +
+    `Referer=${referer}`
+  );
+  next();
+});
+
 // Enable gzip compression for HTTP responses
 app.use(compression());
 
