@@ -449,6 +449,53 @@ app.use((req, res, next) => {
   next();
 });
 
+// Scanner and Bot Hardening Middleware to instantly reject malicious probes (WordPress, Joomla, Drupal, XML-RPC, feed, etc.)
+app.use((req, res, next) => {
+  const path = req.originalUrl || req.url || req.path || '';
+  const userAgent = (req.headers['user-agent'] as string) || '';
+
+  // Patterns for typical CMS scanners, config probing, and exploit tools
+  const isScannerPath = 
+    /wp-/i.test(path) ||
+    /xmlrpc/i.test(path) ||
+    /wlwmanifest\.xml/i.test(path) ||
+    /\.php/i.test(path) ||
+    /\.asp/i.test(path) ||
+    /\.aspx/i.test(path) ||
+    /\.jsp/i.test(path) ||
+    /joomla/i.test(path) ||
+    /drupal/i.test(path) ||
+    /administrator/i.test(path) ||
+    /\.env/i.test(path) ||
+    /\.git/i.test(path) ||
+    /etc\/passwd/i.test(path) ||
+    /cgi-bin/i.test(path) ||
+    /\/(feed|rss|atom|rdf)(\.xml|\/)?$/i.test(path);
+
+  const isScannerUA = 
+    /go-http-client/i.test(userAgent) ||
+    /sqlmap/i.test(userAgent) ||
+    /nikto/i.test(userAgent) ||
+    /dirbuster/i.test(userAgent) ||
+    /nmap/i.test(userAgent) ||
+    /masscan/i.test(userAgent) ||
+    /zgrab/i.test(userAgent);
+
+  if (isScannerPath || isScannerUA) {
+    const timestamp = new Date().toISOString();
+    const clientIp = (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() || req.socket.remoteAddress || '-';
+    const reason = isScannerPath ? 'Scanner Path Detected' : 'Scanner User-Agent Detected';
+    
+    console.log(`[Scanner Blocked] ${timestamp} | ${req.method} ${path} | IP=${clientIp} | Reason=${reason} | UA=${userAgent}`);
+    
+    // Instantly reject the request with 403 Forbidden before any application logic or database querying runs
+    res.status(403).send('Forbidden');
+    return;
+  }
+
+  next();
+});
+
 // Enable gzip compression for HTTP responses
 app.use(compression());
 
