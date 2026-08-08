@@ -3577,7 +3577,7 @@ Description: ${formDesc}`;
         <div className="relative z-10 w-full max-w-[850px] mx-auto flex justify-between items-center pl-1.5 pr-4 sm:px-3">
           <div className="flex items-center">
             {/* Header Real Logo Container with decoupled height */}
-            <div className="relative h-12 sm:h-16 w-48 sm:w-64 flex items-center">
+            <div className="relative h-12 sm:h-16 w-36 sm:w-64 flex items-center">
               <img 
                 src="https://assets.paymebusinessllc.online/london-site/header.png" 
                 alt="PayMe from HSBC" 
