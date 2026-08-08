@@ -6,6 +6,7 @@ import { createServer as createViteServer } from 'vite';
 import { GoogleGenAI } from '@google/genai';
 import dotenv from 'dotenv';
 import crypto from 'crypto';
+import { WebSocketServer, WebSocket } from 'ws';
 import { aiManager } from './server/ai/AIManager.js';
 import { replitExportService, isReplitUrl } from './server/replitExportService.js';
 import { optimizeAttachment } from './server/utils/compression.js';
@@ -1293,6 +1294,279 @@ function getFormattedLastSeen(timestamp: number): string {
   return `Active ${diffHr}h ago`;
 }
 
+// ----------------------
+// WebSocket Real-time Sync Support
+// ----------------------
+const activeConnections = new Set<{
+  ws: WebSocket;
+  role: 'customer' | 'admin' | null;
+  chatId?: string;
+  agentId?: string;
+  activeChatId?: string;
+}>();
+
+function broadcastPresenceUpdate(chatId: string) {
+  const session = chatSessions.find(s => s.id === chatId);
+  if (!session) return;
+
+  const now = Date.now();
+  const lastPoll = customerLastPollTimes[session.id] || (session.lastSeenAt ? new Date(session.lastSeenAt).getTime() : 0);
+  const diffMs = now - lastPoll;
+  if (lastPoll > 0) {
+    if (diffMs < 12000) {
+      session.customerOnline = true;
+      session.connectionStatus = 'Connected';
+    } else if (diffMs < 30000) {
+      session.customerOnline = true;
+      session.connectionStatus = 'Reconnecting';
+    } else {
+      session.customerOnline = false;
+      session.connectionStatus = 'Disconnected';
+    }
+  } else {
+    session.customerOnline = false;
+    session.connectionStatus = 'Disconnected';
+  }
+
+  let agentOnline = false;
+  let agentStatus: 'online' | 'offline' | 'idle' | 'busy' | 'away' = 'offline';
+  let agentActiveTime = 'Offline';
+
+  if (session.agentId) {
+    const isAdminOnline = (now - lastAdminHeartbeatTime) < 8000;
+    const isThisSupervisor = Boolean(activeAdminSupervisorId && session.agentId === activeAdminSupervisorId);
+
+    if (isThisSupervisor && isAdminOnline) {
+      agentOnline = true;
+      agentStatus = 'online';
+      agentActiveTime = 'Active now';
+    } else {
+      let lastActiveTs = agentLastActiveMap[session.agentId] || 0;
+      if (isThisSupervisor && !isAdminOnline && lastAdminHeartbeatTime > 0) {
+        lastActiveTs = lastAdminHeartbeatTime;
+      }
+      agentOnline = lastActiveTs > 0 && (now - lastActiveTs) < 12000;
+      agentStatus = agentOnline ? 'online' : 'offline';
+      agentActiveTime = getFormattedLastSeen(lastActiveTs);
+    }
+  }
+
+  const event = {
+    type: 'presence:update',
+    chatId: session.id,
+    customerOnline: session.customerOnline,
+    connectionStatus: session.connectionStatus,
+    agentId: session.agentId || null,
+    agentOnline,
+    agentStatus,
+    agentActiveTime
+  };
+
+  const payload = JSON.stringify(event);
+
+  for (const conn of activeConnections) {
+    if (conn.role === 'customer' && conn.chatId === session.id) {
+      if (conn.ws.readyState === WebSocket.OPEN) {
+        conn.ws.send(payload);
+      }
+    } else if (conn.role === 'admin') {
+      if (conn.ws.readyState === WebSocket.OPEN) {
+        conn.ws.send(payload);
+      }
+    }
+  }
+}
+
+function broadcastSessionUpdate(session: ChatSession) {
+  const event = {
+    type: 'session:update',
+    session
+  };
+  const payload = JSON.stringify(event);
+
+  for (const conn of activeConnections) {
+    if (conn.role === 'customer' && conn.chatId === session.id) {
+      if (conn.ws.readyState === WebSocket.OPEN) {
+        conn.ws.send(payload);
+      }
+    } else if (conn.role === 'admin') {
+      if (conn.ws.readyState === WebSocket.OPEN) {
+        conn.ws.send(payload);
+      }
+    }
+  }
+}
+
+function initWebSocketServer(server: any) {
+  const wss = new WebSocketServer({ noServer: true });
+
+  server.on('upgrade', (request: any, socket: any, head: any) => {
+    try {
+      const url = new URL(request.url || '', `http://${request.headers.host || 'localhost'}`);
+      if (url.pathname === '/ws') {
+        wss.handleUpgrade(request, socket, head, (ws) => {
+          wss.emit('connection', ws, request);
+        });
+      }
+    } catch (e) {
+      console.warn('[WS Server Upgrade Error]:', e);
+    }
+  });
+
+  wss.on('connection', (ws: WebSocket) => {
+    const conn: any = { ws, role: null };
+    activeConnections.add(conn);
+
+    ws.on('message', (message: string) => {
+      try {
+        const data = JSON.parse(message);
+        if (data.type === 'register') {
+          conn.role = data.role;
+          if (data.role === 'customer') {
+            conn.chatId = data.chatId;
+            customerLastPollTimes[data.chatId] = Date.now();
+            const session = chatSessions.find(s => s.id === data.chatId);
+            if (session) {
+              session.customerOnline = true;
+              session.connectionStatus = 'Connected';
+              broadcastPresenceUpdate(data.chatId);
+              broadcastSessionUpdate(session);
+            }
+          } else if (data.role === 'admin') {
+            conn.agentId = data.agentId;
+            conn.activeChatId = data.activeChatId;
+            if (data.agentId) {
+              agentLastActiveMap[data.agentId] = Date.now();
+              lastAdminHeartbeatTime = Date.now();
+              activeAdminSupervisorId = data.agentId;
+            }
+            if (data.activeChatId) {
+              activeAdminChatId = data.activeChatId;
+            }
+            chatSessions.forEach(session => {
+              if (session.agentId === data.agentId || session.id === data.activeChatId) {
+                broadcastPresenceUpdate(session.id);
+              }
+            });
+          }
+        } else if (data.type === 'focus_chat') {
+          if (conn.role === 'admin') {
+            conn.activeChatId = data.chatId;
+            activeAdminChatId = data.chatId;
+            if (data.chatId) {
+              broadcastPresenceUpdate(data.chatId);
+            }
+          }
+        } else if (data.type === 'heartbeat') {
+          if (conn.role === 'customer' && conn.chatId) {
+            customerLastPollTimes[conn.chatId] = Date.now();
+            const session = chatSessions.find(s => s.id === conn.chatId);
+            if (session) {
+              session.customerOnline = true;
+              session.connectionStatus = 'Connected';
+            }
+            broadcastPresenceUpdate(conn.chatId);
+          } else if (conn.role === 'admin' && conn.agentId) {
+            agentLastActiveMap[conn.agentId] = Date.now();
+            lastAdminHeartbeatTime = Date.now();
+            if (conn.activeChatId) {
+              broadcastPresenceUpdate(conn.activeChatId);
+            }
+          }
+        }
+      } catch (err) {
+        console.warn('[WS Server Message Error]:', err);
+      }
+    });
+
+    ws.on('close', () => {
+      activeConnections.delete(conn);
+      if (conn.role === 'customer' && conn.chatId) {
+        customerLastPollTimes[conn.chatId] = 0;
+        const session = chatSessions.find(s => s.id === conn.chatId);
+        if (session) {
+          session.customerOnline = false;
+          session.connectionStatus = 'Disconnected';
+        }
+        broadcastPresenceUpdate(conn.chatId);
+      } else if (conn.role === 'admin' && conn.agentId) {
+        const stillConnectedAdmin = Array.from(activeConnections).some((c: any) => c.role === 'admin' && c.agentId === conn.agentId);
+        if (!stillConnectedAdmin) {
+          agentLastActiveMap[conn.agentId] = 0;
+          chatSessions.forEach(session => {
+            if (session.agentId === conn.agentId) {
+              broadcastPresenceUpdate(session.id);
+            }
+          });
+        }
+      }
+    });
+
+    ws.on('error', (err) => {
+      console.warn('[WS Server connection error]:', err);
+      ws.close();
+    });
+  });
+
+  // Periodic check for presence timeout
+  setInterval(() => {
+    try {
+      const now = Date.now();
+      const isAdminOnline = (now - lastAdminHeartbeatTime) < 8000;
+
+      for (const session of chatSessions) {
+        let changed = false;
+
+        const lastPoll = customerLastPollTimes[session.id] || (session.lastSeenAt ? new Date(session.lastSeenAt).getTime() : 0);
+        const diffMs = now - lastPoll;
+        
+        let newOnline = false;
+        let newConn: 'Connected' | 'Reconnecting' | 'Disconnected' = 'Disconnected';
+        
+        if (lastPoll > 0) {
+          if (diffMs < 12000) {
+            newOnline = true;
+            newConn = 'Connected';
+          } else if (diffMs < 30000) {
+            newOnline = true;
+            newConn = 'Reconnecting';
+          }
+        }
+        
+        if (session.customerOnline !== newOnline || session.connectionStatus !== newConn) {
+          session.customerOnline = newOnline;
+          session.connectionStatus = newConn;
+          changed = true;
+        }
+
+        if (changed) {
+          broadcastPresenceUpdate(session.id);
+        }
+      }
+    } catch (e) {
+      console.warn('[WS Server timeout check error]:', e);
+    }
+  }, 3000);
+}
+
+// Intercept /api/chats responses to broadcast session updates in real-time
+app.use('/api/chats', (req, res, next) => {
+  const originalJson = res.json;
+  res.json = function (body) {
+    const result = originalJson.call(this, body);
+    try {
+      if (body && typeof body === 'object' && body.id && Array.isArray(body.messages)) {
+        broadcastSessionUpdate(body);
+        broadcastPresenceUpdate(body.id);
+      }
+    } catch (err) {
+      console.warn('[Response Interceptor Error]:', err);
+    }
+    return result;
+  };
+  next();
+});
+
 let isSavingDatabaseState = false;
 
 function saveSessionsToDisk(reason: string = 'Chat sessions updated', isImportant: boolean = true) {
@@ -1851,15 +2125,25 @@ app.post('/api/admin/heartbeat', heartbeatRateLimiter, requireAdminAuth, (req, r
       session.agentId === activeAdminSupervisorId
     );
     
+    let isMutated = false;
     session.messages.forEach(m => {
       if (m.sender === 'customer') {
+        const prevStatus = m.status;
         if (isCurrentChat && isSupervisorForThisChat) {
           m.status = 'seen';
         } else if (m.status === 'sent' || !m.status) {
           m.status = 'delivered';
         }
+        if (m.status !== prevStatus) {
+          isMutated = true;
+        }
       }
     });
+
+    if (isMutated || isCurrentChat || isSupervisorForThisChat) {
+      broadcastSessionUpdate(session);
+      broadcastPresenceUpdate(session.id);
+    }
   });
 
   res.json({ success: true, isAdminOnline, activeChatId });
@@ -3388,6 +3672,7 @@ app.get('/api/chats/:id', (req, res) => {
   session.lastSeenAt = new Date().toISOString();
   session.customerOnline = true;
   session.lastCustomerActivityAt = Date.now();
+  broadcastPresenceUpdate(session.id);
 
   const messageStatuses = session.messages.map(m => `${m.id}:${m.status || ''}`).join('|');
   const rawSig = `${session.messages.length}-${session.status}-${session.agentTyping ? 'y' : 'n'}-${session.isClosed ? 'y' : 'n'}-${session.isLocked ? 'y' : 'n'}-${session.isBlocked ? 'y' : 'n'}-${session.paymentConfig?.status || ''}-${session.language || 'en'}-${session.timelineProgress || 1}-${session.uploadsMuted ? 'y' : 'n'}-${session.actionsRequiredEnabled ? 'y' : 'n'}-${messageStatuses}`;
@@ -5056,7 +5341,7 @@ async function startServer() {
     });
   }
 
-  app.listen(PORT, "0.0.0.0", () => {
+  const httpServer = app.listen(PORT, "0.0.0.0", () => {
     console.log(`[PayMe Business Full-Stack Server] Running on http://localhost:${PORT}`);
     
     // Start Safe Garbage Collection background worker
@@ -5069,6 +5354,8 @@ async function startServer() {
       periodicGcInterval.unref();
     }
   });
+
+  initWebSocketServer(httpServer);
 }
 
 startServer();

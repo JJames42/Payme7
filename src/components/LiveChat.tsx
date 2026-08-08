@@ -1146,6 +1146,148 @@ Description: ${formDesc.trim() || 'None Provided'}`;
     };
   }, []);
 
+  // WebSocket Persistent Connection for Customer Chat
+  useEffect(() => {
+    const isPreChatOrHomepage = !session || session.id === 'draft' || (session.status === 'bot' && (botStep === -1 || (botStep >= 0 && botStep <= 3)));
+    if (isPreChatOrHomepage) return;
+
+    let ws: WebSocket | null = null;
+    let reconnectTimeout: any = null;
+    let isMounted = true;
+
+    const connect = () => {
+      if (!isMounted) return;
+      if (ws) {
+        try {
+          ws.close();
+        } catch (e) {}
+      }
+
+      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+      const wsUrl = `${protocol}//${window.location.host}/ws`;
+      
+      console.log('[WebSocket Customer] Connecting to:', wsUrl);
+      ws = new WebSocket(wsUrl);
+
+      ws.onopen = () => {
+        if (!isMounted) {
+          try {
+            ws?.close();
+          } catch (e) {}
+          return;
+        }
+        console.log('[WebSocket Customer] Connected');
+        setConnectionStatus('Connected');
+        try {
+          ws?.send(JSON.stringify({
+            type: 'register',
+            role: 'customer',
+            chatId: session.id
+          }));
+        } catch (e) {
+          console.warn('[WebSocket Customer] Failed to send registration:', e);
+        }
+      };
+
+      ws.onmessage = (event) => {
+        if (!isMounted) return;
+        try {
+          const data = JSON.parse(event.data);
+          console.log('[WebSocket Customer] Received message:', data);
+
+          if (data.type === 'session:update' && data.session && data.session.id === session.id) {
+            setSession((prev) => {
+              if (!prev) return data.session;
+              const serverMsgIds = new Set(data.session.messages.map((m: any) => m.id));
+              const pendingOptimistic = prev.messages.filter(m => !serverMsgIds.has(m.id) && m.sender === 'customer');
+              if (pendingOptimistic.length > 0) {
+                return {
+                  ...data.session,
+                  messages: [...data.session.messages, ...pendingOptimistic]
+                };
+              }
+              return data.session;
+            });
+            if (data.session.status === 'pending') {
+              setBotStep(4);
+            }
+          } else if (data.type === 'presence:update' && data.chatId === session.id) {
+            if (data.agentId) {
+              setAgents((prev) => {
+                const exists = prev.some(a => a.id === data.agentId);
+                if (exists) {
+                  return prev.map(a => {
+                    if (a.id === data.agentId) {
+                      return {
+                        ...a,
+                        status: data.agentStatus,
+                        activeTime: data.agentActiveTime
+                      };
+                    }
+                    return a;
+                  });
+                } else {
+                  return [...prev, {
+                    id: data.agentId,
+                    name: 'Carmen Lee',
+                    initials: 'CL',
+                    region: 'Hong Kong HQ',
+                    activeTime: data.agentActiveTime,
+                    description: 'Customer Support Specialist',
+                    status: data.agentStatus,
+                    avatar: 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=150&h=150&fit=crop&crop=face',
+                    department: 'Customer Operations',
+                    email: 'carmen@payme.hk',
+                    currentChatCount: 0
+                  }];
+                }
+              });
+            }
+          }
+        } catch (err) {
+          console.warn('[WebSocket Customer] Failed to parse message:', err);
+        }
+      };
+
+      ws.onclose = (e) => {
+        if (!isMounted) return;
+        console.log('[WebSocket Customer] Closed', e.reason);
+        setConnectionStatus('Reconnecting');
+        reconnectTimeout = setTimeout(connect, 3000);
+      };
+
+      ws.onerror = (err) => {
+        console.warn('[WebSocket Customer] Error:', err);
+        try {
+          ws?.close();
+        } catch (e) {}
+      };
+    };
+
+    connect();
+
+    const heartbeatInterval = setInterval(() => {
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        try {
+          ws.send(JSON.stringify({ type: 'heartbeat' }));
+        } catch (e) {}
+      }
+    }, 10000);
+
+    return () => {
+      isMounted = false;
+      if (ws) {
+        try {
+          ws.close();
+        } catch (e) {}
+      }
+      if (reconnectTimeout) {
+        clearTimeout(reconnectTimeout);
+      }
+      clearInterval(heartbeatInterval);
+    };
+  }, [session?.id, botStep]);
+
   // 3-minute offline / inactivity detection for single vibration alert
   useEffect(() => {
     let offlineTimer: any = null;

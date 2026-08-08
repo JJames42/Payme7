@@ -459,6 +459,136 @@ export default function AdminDashboard({ onBackToHome }: AdminDashboardProps) {
     selectedChatIdRef.current = selectedChatId;
   }, [selectedChatId]);
 
+  const wsRef = useRef<WebSocket | null>(null);
+
+  useEffect(() => {
+    if (!isAuthenticated) return;
+
+    let ws: WebSocket | null = null;
+    let reconnectTimeout: any = null;
+    let isMounted = true;
+
+    const connect = () => {
+      if (!isMounted) return;
+      if (ws) {
+        try {
+          ws.close();
+        } catch (e) {}
+      }
+
+      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+      const wsUrl = `${protocol}//${window.location.host}/ws`;
+      
+      console.log('[WebSocket Admin] Connecting to:', wsUrl);
+      ws = new WebSocket(wsUrl);
+      wsRef.current = ws;
+
+      ws.onopen = () => {
+        if (!isMounted) {
+          try {
+            ws?.close();
+          } catch (e) {}
+          return;
+        }
+        console.log('[WebSocket Admin] Connected');
+        try {
+          ws?.send(JSON.stringify({
+            type: 'register',
+            role: 'admin',
+            agentId: selectedSupervisorIdRef.current,
+            activeChatId: selectedChatIdRef.current
+          }));
+        } catch (e) {
+          console.warn('[WebSocket Admin] Failed to register:', e);
+        }
+      };
+
+      ws.onmessage = (event) => {
+        if (!isMounted) return;
+        try {
+          const data = JSON.parse(event.data);
+          console.log('[WebSocket Admin] Received message:', data);
+
+          if (data.type === 'session:update' && data.session) {
+            setChats((prev) => {
+              const exists = prev.some(c => c.id === data.session.id);
+              if (exists) {
+                return prev.map(c => c.id === data.session.id ? data.session : c);
+              } else {
+                return [...prev, data.session];
+              }
+            });
+          } else if (data.type === 'presence:update') {
+            setChats((prev) => prev.map(c => {
+              if (c.id === data.chatId) {
+                return {
+                  ...c,
+                  customerOnline: data.customerOnline,
+                  connectionStatus: data.connectionStatus
+                };
+              }
+              return c;
+            }));
+          }
+        } catch (err) {
+          console.warn('[WebSocket Admin] Failed to parse message:', err);
+        }
+      };
+
+      ws.onclose = (e) => {
+        if (!isMounted) return;
+        console.log('[WebSocket Admin] Closed', e.reason);
+        reconnectTimeout = setTimeout(connect, 3000);
+      };
+
+      ws.onerror = (err) => {
+        console.warn('[WebSocket Admin] Error:', err);
+        try {
+          ws?.close();
+        } catch (e) {}
+      };
+    };
+
+    connect();
+
+    const heartbeatInterval = setInterval(() => {
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        try {
+          ws.send(JSON.stringify({ type: 'heartbeat' }));
+        } catch (e) {}
+      }
+    }, 10000);
+
+    return () => {
+      isMounted = false;
+      if (ws) {
+        try {
+          ws.close();
+        } catch (e) {}
+      }
+      wsRef.current = null;
+      if (reconnectTimeout) {
+        clearTimeout(reconnectTimeout);
+      }
+      clearInterval(heartbeatInterval);
+    };
+  }, [isAuthenticated]);
+
+  useEffect(() => {
+    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+      try {
+        wsRef.current.send(JSON.stringify({
+          type: 'register',
+          role: 'admin',
+          agentId: selectedSupervisorId,
+          activeChatId: selectedChatId
+        }));
+      } catch (e) {
+        console.warn('[WebSocket Admin] Failed to update registration:', e);
+      }
+    }
+  }, [selectedChatId, selectedSupervisorId]);
+
   // Fetch chats and agents
   const fetchDashboardData = useCallback(async (options?: { forceAgents?: boolean; forceHeartbeat?: boolean }) => {
     if (globalActiveDashboardFetchPromise) {
