@@ -788,6 +788,11 @@ export default function LiveChat({ onBackToHome, sessionId: propSessionId }: Liv
       return;
     }
 
+    // Do not fetch agents if there is no assigned human agent yet (waiting state)
+    if (!session.agentId) {
+      return;
+    }
+
     const fetchAgents = async () => {
       try {
         let data: Agent[];
@@ -811,7 +816,7 @@ export default function LiveChat({ onBackToHome, sessionId: propSessionId }: Liv
     };
 
     fetchAgents();
-  }, [session?.id, botStep]);
+  }, [session?.id, botStep, session?.agentId]);
 
   const isInitializingChatRef = useRef(false);
   const lastSessionIdRef = useRef<string | undefined>(undefined);
