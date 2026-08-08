@@ -422,7 +422,7 @@ export default function LiveChat({ onBackToHome, sessionId: propSessionId }: Liv
   };
 
   const updateServerLanguage = async (lang: 'en' | 'hk') => {
-    if (!session) return;
+    if (!session || session.id === 'draft') return;
     try {
       const res = await fetch(`/api/chats/${session.id}/topic`, {
         method: 'POST',
@@ -763,6 +763,10 @@ export default function LiveChat({ onBackToHome, sessionId: propSessionId }: Liv
 
   // Fetch agents periodically to keep dynamic status updated
   useEffect(() => {
+    if (!session || session.id === 'draft') {
+      return;
+    }
+
     let timeoutId: any = null;
     let isPaused = false;
 
@@ -827,7 +831,7 @@ export default function LiveChat({ onBackToHome, sessionId: propSessionId }: Liv
       }
       document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
-  }, []);
+  }, [session?.id]);
 
   const isInitializingChatRef = useRef(false);
   const lastSessionIdRef = useRef<string | undefined>(undefined);
@@ -838,7 +842,7 @@ export default function LiveChat({ onBackToHome, sessionId: propSessionId }: Liv
 
   // Monitor agent case acceptance and new agent messages for vibration and sound notifications
   useEffect(() => {
-    if (!session) return;
+    if (!session || session.id === 'draft') return;
 
     if (lastSessionIdRef.current !== session.id) {
       lastSessionIdRef.current = session.id;
@@ -963,7 +967,11 @@ export default function LiveChat({ onBackToHome, sessionId: propSessionId }: Liv
   };
 
   const handleInChatIntakeSubmit = async () => {
-    if (!session) return;
+    let activeSession = session;
+    if (!activeSession || activeSession.id === 'draft') {
+      activeSession = await ensureSessionCreated();
+      if (!activeSession) return;
+    }
 
     let hasErr = false;
     if (!formName.trim()) {
@@ -1005,7 +1013,7 @@ Description: ${formDesc.trim() || 'None Provided'}`;
       }
 
       // Update session topic, customer info, and status to pending in backend
-      await fetch(`/api/chats/${session.id}/topic`, {
+      await fetch(`/api/chats/${activeSession.id}/topic`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -1018,7 +1026,7 @@ Description: ${formDesc.trim() || 'None Provided'}`;
       });
 
       // Send customer summary message
-      await fetch(`/api/chats/${session.id}/messages`, {
+      await fetch(`/api/chats/${activeSession.id}/messages`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -1029,10 +1037,10 @@ Description: ${formDesc.trim() || 'None Provided'}`;
 
       // Send bot reply message
       const botText = customerLanguage === 'hk'
-        ? `多謝您，${formName.trim()}！您的資料已成功驗證並提交至 PayMe 支援佇列。\n\n您的案件 (#${session.caseId || 'PAYME-84920'}) 已轉接給真人專員。請稍等，專員即將加入對話...`
-        : `Thank you, ${formName.trim()}! Your details have been verified and submitted to our HSBC PayMe queue.\n\nYour case (#${session.caseId || 'PAYME-84920'}) has been transferred to a live human representative. Please wait a moment while an agent connects...`;
+        ? `多謝您，${formName.trim()}！您的資料已成功驗證並提交至 PayMe 支援佇列。\n\n您的案件 (#${activeSession.caseId || 'PAYME-84920'}) 已轉接給真人專員。請稍等，專員即將加入對話...`
+        : `Thank you, ${formName.trim()}! Your details have been verified and submitted to our HSBC PayMe queue.\n\nYour case (#${activeSession.caseId || 'PAYME-84920'}) has been transferred to a live human representative. Please wait a moment while an agent connects...`;
 
-      const res = await fetch(`/api/chats/${session.id}/messages`, {
+      const res = await fetch(`/api/chats/${activeSession.id}/messages`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -1435,7 +1443,7 @@ Description: ${formDesc.trim() || 'None Provided'}`;
 
   // Helper to ensure a session is created ONCE when the customer intentionally starts chatting
   const ensureSessionCreated = async (options?: { topic?: string; name?: string; email?: string }): Promise<ChatSession | null> => {
-    if (session) return session;
+    if (session && session.id !== 'draft') return session;
 
     try {
       setLoading(true);
@@ -1460,11 +1468,41 @@ Description: ${formDesc.trim() || 'None Provided'}`;
 
       if (!res.ok) throw new Error('Failed to create chat session');
       const data: ChatSession = await res.json();
-      setSession(data);
+
+      // If we had any draft messages, save them to the server
+      const draftMessages = session?.messages || [];
+      for (const msg of draftMessages) {
+        try {
+          await fetch(`/api/chats/${data.id}/messages`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              sender: msg.sender,
+              text: msg.text,
+              timestamp: msg.timestamp,
+              attachment: msg.attachment
+            })
+          });
+        } catch (e) {
+          console.warn('Failed to sync draft message to server:', e);
+        }
+      }
+
+      // Preserve local state with the same merged messages
+      const mergedMessages = [
+        ...draftMessages,
+        ...data.messages.filter(m => !draftMessages.some(dm => dm.id === m.id))
+      ];
+      const sessionWithPreservedMessages = {
+        ...data,
+        messages: mergedMessages
+      };
+
+      setSession(sessionWithPreservedMessages);
       if (typeof localStorage !== 'undefined') {
         localStorage.setItem('payme_chat_session_id', data.id);
       }
-      return data;
+      return sessionWithPreservedMessages;
     } catch (err) {
       console.error('Failed to create chat session:', err);
       return null;
@@ -1639,7 +1677,7 @@ Description: ${formDesc.trim() || 'None Provided'}`;
 
   // Real-time synchronization polling (Adaptive timeout)
   useEffect(() => {
-    if (!session) return;
+    if (!session || session.id === 'draft') return;
 
     let timeoutId: any = null;
     let isPollingStopped = false;
@@ -2235,7 +2273,7 @@ Description: ${formDesc.trim() || 'None Provided'}`;
 
   const sendVoiceMessage = async (base64: string, durationSec: number) => {
     let activeSession = session;
-    if (!activeSession) {
+    if (!activeSession || activeSession.id === 'draft') {
       activeSession = await ensureSessionCreated();
       if (!activeSession) return;
     }
@@ -2321,7 +2359,7 @@ Description: ${formDesc.trim() || 'None Provided'}`;
       setBotStep(4); // Animated loading progress
 
       let activeSession = session;
-      if (!activeSession) {
+      if (!activeSession || activeSession.id === 'draft') {
         activeSession = await ensureSessionCreated({
           name: formName.trim(),
           email: formEmail.trim(),
@@ -2407,6 +2445,24 @@ Description: ${formDesc}`;
           ? "歡迎使用 PayMe by HSBC 支援中心。我是您的 AI 支援助理。在為您轉接至專員前，請先提供您的電郵地址。"
           : "Welcome to PayMe by HSBC Help Center. I am your AI Support Assistant. Before I transfer you to a specialist, let's gather a few brief details. May I have your email address?";
 
+        if (sid === 'draft') {
+          const welcomeMsg: Message = {
+            id: `msg-welcome-${Date.now()}`,
+            sender: 'bot',
+            text: greetingText,
+            timestamp: new Date().toISOString(),
+            status: 'sent'
+          };
+          setSession(prev => {
+            if (!prev) return prev;
+            return {
+              ...prev,
+              messages: [...prev.messages, welcomeMsg]
+            };
+          });
+          return;
+        }
+
         try {
           const res = await fetch(`/api/chats/${sid}/messages`, {
             method: 'POST',
@@ -2433,11 +2489,42 @@ Description: ${formDesc}`;
     setFormCategory(topicTitle);
     setBotStep(0); // Open conversation view
 
-    if (!session) return;
+    let activeSession = session;
+    if (!activeSession) {
+      const draftSession: ChatSession = {
+        id: 'draft',
+        caseId: 'PM-HK-2026-DRAFT',
+        userName: typeof localStorage !== 'undefined' ? localStorage.getItem('payme_customer_name') || 'Website Visitor' : 'Website Visitor',
+        userEmail: typeof localStorage !== 'undefined' ? localStorage.getItem('payme_customer_email') || '' : '',
+        phone: typeof localStorage !== 'undefined' ? localStorage.getItem('payme_customer_phone') || '' : '',
+        status: 'bot',
+        language: customerLanguage,
+        createdAt: new Date().toISOString(),
+        attachmentsAllowed: true,
+        voiceNotesAllowed: true,
+        messages: [],
+        transactions: [],
+        selectedTopic: topicTitle,
+        instructions: [],
+        timelineProgress: 1
+      };
+      setSession(draftSession);
+      
+      initialGreetingTriggeredRef.current[draftSession.id] = true;
+      triggerBotGreetingFlow(draftSession.id);
+      return;
+    }
+
+    if (activeSession.id === 'draft') {
+      setSession(prev => prev ? { ...prev, messages: [], selectedTopic: topicTitle } : prev);
+      initialGreetingTriggeredRef.current[activeSession.id] = true;
+      triggerBotGreetingFlow(activeSession.id);
+      return;
+    }
 
     try {
       // 1. Update session topic and reset messages on backend
-      const res = await fetch(`/api/chats/${session.id}/topic`, {
+      const res = await fetch(`/api/chats/${activeSession.id}/topic`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -2455,15 +2542,15 @@ Description: ${formDesc}`;
       }
 
       // 2. Trigger typing sequence
-      initialGreetingTriggeredRef.current[session.id] = true;
-      triggerBotGreetingFlow(session.id);
+      initialGreetingTriggeredRef.current[activeSession.id] = true;
+      triggerBotGreetingFlow(activeSession.id);
     } catch (err) {
       console.error('Error starting topic chat:', err);
     }
   };
 
   const handleRateSession = async (ratingVal: number, comment?: string) => {
-    if (!session) return;
+    if (!session || session.id === 'draft') return;
     try {
       const res = await fetch(`/api/chats/${session.id}/rating`, {
         method: 'POST',
@@ -2484,7 +2571,7 @@ Description: ${formDesc}`;
     if (e) e.preventDefault();
     
     let activeSession = session;
-    if (!activeSession) {
+    if (!activeSession || activeSession.id === 'draft') {
       activeSession = await ensureSessionCreated();
       if (!activeSession) return;
     }
@@ -2666,7 +2753,7 @@ Description: ${formDesc}`;
 
   // Trigger Typing Statuses
   const triggerTypingStatus = async (isTyping: boolean) => {
-    if (!session || session.isLocked || session.isBlocked) return;
+    if (!session || session.id === 'draft' || session.isLocked || session.isBlocked) return;
     if (!isTyping && customerTypingTimeoutRef.current) {
       clearTimeout(customerTypingTimeoutRef.current);
       customerTypingTimeoutRef.current = null;
@@ -2686,7 +2773,7 @@ Description: ${formDesc}`;
 
   // Handle Payment "I Have Paid" Submission
   const handleIHavePaid = async () => {
-    if (!session || isSubmittingPayment) return;
+    if (!session || session.id === 'draft' || isSubmittingPayment) return;
     setIsSubmittingPayment(true);
     try {
       // 1. Update payment status on the server
@@ -2726,8 +2813,15 @@ Description: ${formDesc}`;
   // File Upload base64
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
-    if (!files || files.length === 0 || !session) return;
-    if (session.uploadsMuted) {
+    if (!files || files.length === 0) return;
+
+    let activeSession = session;
+    if (!activeSession || activeSession.id === 'draft') {
+      activeSession = await ensureSessionCreated();
+      if (!activeSession) return;
+    }
+
+    if (activeSession.uploadsMuted) {
       alert('File uploads are currently muted by the administrator.');
       return;
     }
@@ -2750,7 +2844,7 @@ Description: ${formDesc}`;
           data: base64Data
         };
 
-        const res = await fetch(`/api/chats/${session.id}/messages`, {
+        const res = await fetch(`/api/chats/${activeSession.id}/messages`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -3079,33 +3173,19 @@ Description: ${formDesc}`;
                 {/* 1. Chat with a real person Floating Card */}
                 <div 
                   onClick={() => setBotStep(0)}
-                  className="bg-white border border-slate-200/70 p-3 sm:p-4 rounded-[20px] shadow-[0_4px_16px_rgba(0,0,0,0.03)] hover:shadow-[0_8px_24px_rgba(0,0,0,0.06)] hover:-translate-y-0.5 transition-all duration-300 cursor-pointer flex items-center justify-between gap-3"
+                  className="bg-white border border-slate-200/70 p-4 sm:p-5 rounded-[20px] shadow-[0_4px_16px_rgba(0,0,0,0.03)] hover:shadow-[0_8px_24px_rgba(0,0,0,0.06)] hover:-translate-y-0.5 transition-all duration-300 cursor-pointer flex items-center gap-4 w-full"
                 >
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-full bg-[#fef2f2] flex items-center justify-center shrink-0 border border-[#fee2e2]/80">
-                      <Headphones className="w-5 h-5 text-[#bd162c]" strokeWidth={1.6} />
-                    </div>
-                    <div>
-                      <h3 className="text-[13.5px] sm:text-[15px] font-bold text-slate-900 leading-tight">
-                        Chat with a real person
-                      </h3>
-                      <p className="text-slate-500 text-[10.5px] sm:text-[12px] leading-snug mt-0.5 font-normal max-w-[200px] sm:max-w-xs">
-                        Our support specialists are online and ready to assist you.
-                      </p>
-                    </div>
+                  <div className="w-11 h-11 sm:w-14 sm:h-14 rounded-full bg-[#fef2f2] flex items-center justify-center shrink-0 border border-[#fee2e2]/80">
+                    <Headphones className="w-5.5 h-5.5 sm:w-6 sm:h-6 text-[#bd162c]" strokeWidth={1.6} />
                   </div>
-                  
-                  {agents.some(a => a.status === 'online') ? (
-                    <div className="bg-[#f4f4f6] border border-slate-200/60 px-2.5 py-1 rounded-full text-xs font-medium flex items-center gap-1.5 shrink-0">
-                      <span className="w-1.5 h-1.5 bg-[#22c55e] rounded-full shrink-0" />
-                      <span className="text-slate-800 text-[11px] font-semibold leading-none">Online</span>
-                    </div>
-                  ) : (
-                    <div className="bg-[#f4f4f6] border border-slate-200/60 px-2.5 py-1 rounded-full text-xs font-medium flex items-center gap-1.5 shrink-0">
-                      <span className="w-1.5 h-1.5 bg-slate-400 rounded-full shrink-0" />
-                      <span className="text-slate-600 text-[11px] font-medium leading-none">Away</span>
-                    </div>
-                  )}
+                  <div className="flex-1 min-w-0">
+                    <h3 className="text-sm sm:text-[15.5px] font-bold text-slate-900 leading-tight">
+                      Chat with a real person
+                    </h3>
+                    <p className="text-slate-500 text-[11px] sm:text-[13px] leading-snug mt-1 font-normal">
+                      We’ll connect you with the next available support specialist.
+                    </p>
+                  </div>
                 </div>
 
                 {/* 2. What can we help you with Section */}
