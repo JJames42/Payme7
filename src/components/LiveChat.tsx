@@ -761,27 +761,34 @@ export default function LiveChat({ onBackToHome, sessionId: propSessionId }: Liv
   const [session, setSession] = useState<ChatSession | null>(null);
   const [agents, setAgents] = useState<Agent[]>([]);
 
-  // Fetch agents periodically to keep dynamic status updated
+  // Bot-Flow local states
+  const [botStep, setBotStep] = useState<number>(-1); // -1: Welcome/Support Dashboard, 0+: Active Chat View
+  const [formName, setFormName] = useState('');
+  const [formEmail, setFormEmail] = useState('');
+  const [formCategory, setFormCategory] = useState('');
+  const [formTxnId, setFormTxnId] = useState('');
+  const [formRefNum, setFormRefNum] = useState('');
+  const [formDesc, setFormDesc] = useState('');
+  const [onboardingFiles, setOnboardingFiles] = useState<{name: string, type: string, data: string}[]>([]);
+  const [nameError, setNameError] = useState<string | null>(null);
+  const [emailError, setEmailError] = useState<string | null>(null);
+  const [isSubmittingIntake, setIsSubmittingIntake] = useState(false);
+  const [isVerifiedSubmitted, setIsVerifiedSubmitted] = useState(false);
+  const [isBotTyping, setIsBotTyping] = useState(false);
+
+  const sessionRef = useRef<ChatSession | null>(null);
   useEffect(() => {
-    if (!session || session.id === 'draft') {
+    sessionRef.current = session;
+  }, [session]);
+
+  // Fetch agents exactly once when session becomes active to show assigned agent details
+  useEffect(() => {
+    const isPreChatOrHomepage = !session || session.id === 'draft' || (session.status === 'bot' && (botStep === -1 || (botStep >= 0 && botStep <= 3)));
+    if (isPreChatOrHomepage) {
       return;
     }
 
-    let timeoutId: any = null;
-    let isPaused = false;
-
     const fetchAgents = async () => {
-      if (timeoutId) {
-        clearTimeout(timeoutId);
-        timeoutId = null;
-      }
-
-      if (document.hidden) {
-        isPaused = true;
-        return;
-      }
-      isPaused = false;
-
       try {
         let data: Agent[];
         if (activeAgentsPromise) {
@@ -801,37 +808,10 @@ export default function LiveChat({ onBackToHome, sessionId: propSessionId }: Liv
       } catch (err) {
         console.warn('Failed to fetch agents:', err);
       }
-
-      if (!document.hidden && session) {
-        timeoutId = setTimeout(fetchAgents, 45000);
-      } else {
-        isPaused = true;
-      }
     };
 
-    const handleVisibilityChange = () => {
-      if (!document.hidden) {
-        if (isPaused || !timeoutId) {
-          if (timeoutId) {
-            clearTimeout(timeoutId);
-            timeoutId = null;
-          }
-          fetchAgents();
-        }
-      }
-    };
-
-    document.addEventListener('visibilitychange', handleVisibilityChange);
     fetchAgents();
-
-    return () => {
-      if (timeoutId) {
-        clearTimeout(timeoutId);
-        timeoutId = null;
-      }
-      document.removeEventListener('visibilitychange', handleVisibilityChange);
-    };
-  }, [session?.id]);
+  }, [session?.id, botStep]);
 
   const isInitializingChatRef = useRef(false);
   const lastSessionIdRef = useRef<string | undefined>(undefined);
@@ -908,20 +888,6 @@ export default function LiveChat({ onBackToHome, sessionId: propSessionId }: Liv
   });
   const isDraggingCardRef = useRef(false);
 
-  // Bot-Flow local states
-  const [botStep, setBotStep] = useState<number>(-1); // -1: Welcome/Support Dashboard, 0+: Active Chat View
-  const [formName, setFormName] = useState('');
-  const [formEmail, setFormEmail] = useState('');
-  const [formCategory, setFormCategory] = useState('');
-  const [formTxnId, setFormTxnId] = useState('');
-  const [formRefNum, setFormRefNum] = useState('');
-  const [formDesc, setFormDesc] = useState('');
-  const [onboardingFiles, setOnboardingFiles] = useState<{name: string, type: string, data: string}[]>([]);
-  const [nameError, setNameError] = useState<string | null>(null);
-  const [emailError, setEmailError] = useState<string | null>(null);
-  const [isSubmittingIntake, setIsSubmittingIntake] = useState(false);
-  const [isVerifiedSubmitted, setIsVerifiedSubmitted] = useState(false);
-  const [isBotTyping, setIsBotTyping] = useState(false);
   const initialGreetingTriggeredRef = useRef<Record<string, boolean>>({});
 
   const validateEmail = (email: string) => {
@@ -1677,16 +1643,20 @@ Description: ${formDesc.trim() || 'None Provided'}`;
 
   // Real-time synchronization polling (Adaptive timeout)
   useEffect(() => {
-    if (!session || session.id === 'draft') return;
+    const isPreChatOrHomepage = !session || session.id === 'draft' || (session.status === 'bot' && (botStep === -1 || (botStep >= 0 && botStep <= 3)));
+    if (isPreChatOrHomepage) return;
 
     let timeoutId: any = null;
     let isPollingStopped = false;
+    let isEffectActive = true;
 
     const poll = async () => {
       if (timeoutId) {
         clearTimeout(timeoutId);
         timeoutId = null;
       }
+
+      if (!isEffectActive) return;
 
       if (document.hidden) {
         isPollingStopped = true;
@@ -1695,13 +1665,20 @@ Description: ${formDesc.trim() || 'None Provided'}`;
       isPollingStopped = false;
 
       try {
-        const verParam = (session as any).version ? `?knownVersion=${encodeURIComponent((session as any).version)}` : '';
-        const res = await fetch(`/api/chats/${session.id}${verParam}`);
+        const currentSession = sessionRef.current;
+        if (!currentSession || currentSession.id === 'draft' || !isEffectActive) return;
+
+        const verParam = (currentSession as any).version ? `?knownVersion=${encodeURIComponent((currentSession as any).version)}` : '';
+        const res = await fetch(`/api/chats/${currentSession.id}${verParam}`);
         
+        if (!isEffectActive) return;
+
         let nextDelay = 5000;
         
         if (res.ok) {
           const data: any = await res.json();
+          if (!isEffectActive) return;
+
           if (data.isDeleted) {
             clearCustomerSession();
             setSession(null);
@@ -1710,10 +1687,10 @@ Description: ${formDesc.trim() || 'None Provided'}`;
           }
 
           if (data.unmodified) {
-            nextDelay = getNextPollingDelay(session);
+            nextDelay = getNextPollingDelay(sessionRef.current);
           } else {
             setSession((prev) => {
-              if (!prev) return data;
+              if (!prev || !isEffectActive) return prev;
               const serverMsgIds = new Set(data.messages.map((m: any) => m.id));
               const pendingOptimistic = prev.messages.filter(m => !serverMsgIds.has(m.id) && m.sender === 'customer');
               if (pendingOptimistic.length > 0) {
@@ -1735,14 +1712,14 @@ Description: ${formDesc.trim() || 'None Provided'}`;
           nextDelay = 10000; // Slow down on error
         }
 
-        if (!document.hidden) {
+        if (!document.hidden && isEffectActive) {
           timeoutId = setTimeout(poll, nextDelay);
         } else {
           isPollingStopped = true;
         }
       } catch (err) {
         console.warn('Real-time synchronization failure:', err);
-        if (!document.hidden) {
+        if (!document.hidden && isEffectActive) {
           timeoutId = setTimeout(poll, 10000); // Retry after 10s on network error
         } else {
           isPollingStopped = true;
@@ -1765,17 +1742,18 @@ Description: ${formDesc.trim() || 'None Provided'}`;
     document.addEventListener('visibilitychange', handleVisibilityChange);
 
     // Schedule first poll
-    const delay = getNextPollingDelay(session);
+    const delay = getNextPollingDelay(sessionRef.current);
     timeoutId = setTimeout(poll, delay);
 
     return () => {
+      isEffectActive = false;
       if (timeoutId) {
         clearTimeout(timeoutId);
         timeoutId = null;
       }
       document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
-  }, [session?.id, (session as any)?.version, customerLanguage, connectionStatus]);
+  }, [session?.id, customerLanguage, connectionStatus, botStep]);
 
   // Auto-resize the chat textarea height
   useEffect(() => {
