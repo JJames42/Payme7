@@ -390,33 +390,67 @@ async function addMessageToSession(
 
   // Perform translation asynchronously in background without blocking message presence
   if (sender === 'customer') {
-    if (hasChinese) {
+    const translationRequired = hasChinese;
+    if (translationRequired) {
       // Customer types HK/Chinese -> Translate HK to English for agent dashboard.
       (async () => {
+        let translationSucceeded = false;
         try {
           newMessage.translationEn = await translateToEN(processedText, customer);
+          translationSucceeded = true;
         } catch (e: any) {
           console.warn('[Background Customer Translation Warning]:', e?.message || String(e));
+        } finally {
+          console.log(`[Translation Diagnostic]
+  chatId: ${session.id}
+  sender: ${sender}
+  customerLanguage: ${customer.language || 'en'}
+  sourceLanguage: HK
+  targetLanguage: EN
+  translationRequired: ${translationRequired}
+  translationSucceeded: ${translationSucceeded}`);
         }
       })();
     }
-    // If NOT hasChinese, completely bypass background translation jobs and logging.
   } else if (sender !== 'system') {
     // Agent / Bot messages (Agent -> Customer)
+    const translationRequired = customer.language === 'hk' && !hasChinese;
     if (customer.language === 'hk') {
       (async () => {
+        let translationSucceeded = false;
         try {
           if (hasChinese) {
             newMessage.translationEn = await translateToEN(processedText, customer);
             newMessage.translationHk = processedText;
+            translationSucceeded = true;
           } else {
             newMessage.translationEn = processedText;
             newMessage.translationHk = await translateToHK(processedText, customer);
+            translationSucceeded = true;
           }
         } catch (e: any) {
           console.warn('[Background Agent Translation Warning]:', e?.message || String(e));
+        } finally {
+          console.log(`[Translation Diagnostic]
+  chatId: ${session.id}
+  sender: ${sender}
+  customerLanguage: ${customer.language || 'en'}
+  sourceLanguage: EN
+  targetLanguage: HK
+  translationRequired: ${translationRequired}
+  translationSucceeded: ${translationSucceeded}`);
         }
       })();
+    } else {
+      // Not HK, no translation needed
+      console.log(`[Translation Diagnostic]
+  chatId: ${session.id}
+  sender: ${sender}
+  customerLanguage: ${customer.language || 'en'}
+  sourceLanguage: EN
+  targetLanguage: EN
+  translationRequired: false
+  translationSucceeded: false`);
     }
   }
 
@@ -3349,6 +3383,12 @@ app.get('/api/chats/:id', (req, res) => {
     return res.status(404).json({ error: 'Chat session not found' });
   }
 
+  // Update customer presence/online status on any polling or retrieval of the session
+  customerLastPollTimes[session.id] = Date.now();
+  session.lastSeenAt = new Date().toISOString();
+  session.customerOnline = true;
+  session.lastCustomerActivityAt = Date.now();
+
   const messageStatuses = session.messages.map(m => `${m.id}:${m.status || ''}`).join('|');
   const rawSig = `${session.messages.length}-${session.status}-${session.agentTyping ? 'y' : 'n'}-${session.isClosed ? 'y' : 'n'}-${session.isLocked ? 'y' : 'n'}-${session.isBlocked ? 'y' : 'n'}-${session.paymentConfig?.status || ''}-${session.language || 'en'}-${session.timelineProgress || 1}-${session.uploadsMuted ? 'y' : 'n'}-${session.actionsRequiredEnabled ? 'y' : 'n'}-${messageStatuses}`;
   const stateSig = crypto.createHash('md5').update(rawSig).digest('hex');
@@ -3860,12 +3900,18 @@ app.post('/api/chats/:id/reset-messages', (req, res) => {
 // 5. Update Chat Status/Topic
 app.post('/api/chats/:id/topic', adminActionRateLimiter, (req, res) => {
   const { id } = req.params;
-  const { topic, status, userName, userEmail, phone, clearMessages, resetBot } = req.body;
+  const { topic, status, userName, userEmail, phone, clearMessages, resetBot, language } = req.body;
 
   const session = chatSessions.find(s => s.id === id);
   if (!session) {
     return res.status(404).json({ error: 'Chat session not found' });
   }
+
+  // Update customer presence/activity on any customer action
+  customerLastPollTimes[session.id] = Date.now();
+  session.lastSeenAt = new Date().toISOString();
+  session.customerOnline = true;
+  session.lastCustomerActivityAt = Date.now();
 
   if (topic) {
     session.selectedTopic = sanitizeString(topic, 200);
@@ -3877,6 +3923,23 @@ app.post('/api/chats/:id/topic', adminActionRateLimiter, (req, res) => {
   if (userName && !userName.includes('Shopify Merchant') && !userName.includes('Anonymous')) session.userName = sanitizeString(userName, 100);
   if (userEmail && !userEmail.includes('merchant.retail')) session.userEmail = sanitizeEmail(userEmail);
   if (phone) session.phone = sanitizeString(phone, 50);
+
+  if (language === 'en' || language === 'hk') {
+    if (session.language !== language) {
+      session.language = language;
+      const langName = language === 'hk' ? 'Traditional Chinese (HK)' : 'English';
+      const hkLangName = language === 'hk' ? '繁體中文（香港）' : '英文';
+      session.messages.push({
+        id: `sys-lang-${Date.now()}`,
+        sender: 'system',
+        text: `System: Customer switched language to ${langName}.`,
+        translationHk: `系統提示：顧客已將語言切換為${hkLangName}。`,
+        timestamp: new Date().toISOString()
+      });
+    } else {
+      session.language = language;
+    }
+  }
 
   if (clearMessages || (resetBot && (session.status === 'bot' || session.status === 'pending'))) {
     session.messages = [];
@@ -4499,6 +4562,12 @@ app.post('/api/chats/:id/typing', typingRateLimiter, (req, res) => {
   if (customerTyping !== undefined) {
     if (session.isBlocked || session.isLocked) return res.status(403).json({ error: 'Typing disabled.' });
     session.customerTyping = Boolean(customerTyping);
+    
+    // Update customer presence when typing activity is reported
+    customerLastPollTimes[session.id] = Date.now();
+    session.lastSeenAt = new Date().toISOString();
+    session.customerOnline = true;
+    session.lastCustomerActivityAt = Date.now();
   }
 
   res.json(session);
@@ -4714,6 +4783,13 @@ app.post('/api/chats/:id/rating', messageRateLimiter, (req, res) => {
   if (!session) {
     return res.status(404).json({ error: 'Chat session not found' });
   }
+
+  // Update customer presence/activity on rating submission
+  customerLastPollTimes[session.id] = Date.now();
+  session.lastSeenAt = new Date().toISOString();
+  session.customerOnline = true;
+  session.lastCustomerActivityAt = Date.now();
+
   if (session.rating !== undefined && session.rating >= 1 && session.rating <= 5) {
     return res.status(403).json({ error: 'Conversation has already been rated. Rating is final.' });
   }

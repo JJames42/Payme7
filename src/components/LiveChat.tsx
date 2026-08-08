@@ -1512,6 +1512,12 @@ Description: ${formDesc.trim() || 'None Provided'}`;
             const data = await activeInitPromise;
             if (data) {
               setSession(data);
+              if (data.language === 'hk' || data.language === 'en') {
+                setCustomerLanguage(data.language);
+                if (typeof localStorage !== 'undefined') {
+                  localStorage.setItem('payme_customer_language', data.language);
+                }
+              }
               if (data.status === 'bot') {
                 if (data.collectedInfo?.name) {
                   setFormName(data.collectedInfo.name);
@@ -1585,6 +1591,12 @@ Description: ${formDesc.trim() || 'None Provided'}`;
         setSession(data);
         if (typeof localStorage !== 'undefined') {
           localStorage.setItem('payme_chat_session_id', data.id);
+        }
+        if (data.language === 'hk' || data.language === 'en') {
+          setCustomerLanguage(data.language);
+          if (typeof localStorage !== 'undefined') {
+            localStorage.setItem('payme_customer_language', data.language);
+          }
         }
         
         // Match local bot step with server state
