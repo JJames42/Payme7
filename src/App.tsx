@@ -25,6 +25,16 @@ export default function App() {
   const [view, setView] = useState<'home' | 'chat' | 'admin'>(getInitialView);
   const [sessionId, setSessionId] = useState<string | undefined>(undefined);
   const [visualHeight, setVisualHeight] = useState<number | null>(null);
+  const [isAndroidMobile, setIsAndroidMobile] = useState(false);
+
+  useEffect(() => {
+    if (typeof navigator !== 'undefined') {
+      const ua = navigator.userAgent;
+      const isAndroid = /Android/i.test(ua);
+      const isMobile = /Mobile/i.test(ua);
+      setIsAndroidMobile(isAndroid && isMobile);
+    }
+  }, []);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -130,7 +140,23 @@ export default function App() {
         <LandingPage onOpenChat={() => navigateTo('chat')} />
       )}
       {view === 'chat' && (
-        <LiveChat onBackToHome={() => navigateTo('home')} sessionId={sessionId} />
+        <div
+          style={isAndroidMobile ? {
+            width: '116.28%',
+            height: '116.28%',
+            transform: 'scale(0.86)',
+            transformOrigin: 'top left',
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            overflow: 'hidden'
+          } : {
+            width: '100%',
+            height: '100%'
+          }}
+        >
+          <LiveChat onBackToHome={() => navigateTo('home')} sessionId={sessionId} />
+        </div>
       )}
       {view === 'admin' && (
         <AdminDashboard onBackToHome={() => navigateTo('home')} />

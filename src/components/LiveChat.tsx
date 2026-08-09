@@ -412,29 +412,7 @@ export default function LiveChat({ onBackToHome, sessionId: propSessionId }: Liv
   });
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isExiting, setIsExiting] = useState(false);
-  const [isAndroidMobile, setIsAndroidMobile] = useState(false);
   const settingsRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (typeof navigator !== 'undefined' && navigator.userAgent) {
-      const ua = navigator.userAgent.toLowerCase();
-      const isAndroid = /android/i.test(ua);
-      const isMobile = /mobile/i.test(ua);
-      if (isAndroid && isMobile) {
-        setIsAndroidMobile(true);
-      }
-    }
-  }, []);
-
-  const androidStyle = isAndroidMobile ? {
-    position: 'absolute' as const,
-    top: 0,
-    left: 0,
-    width: 'calc(100% / 0.83)',
-    height: 'calc(100% / 0.83)',
-    transform: 'scale(0.83)',
-    transformOrigin: 'top left',
-  } : {};
 
   const handleBackToHomeWithAnimation = () => {
     setIsExiting(true);
@@ -3086,10 +3064,7 @@ Description: ${formDesc}`;
 
   if (!session || (session.status === 'bot' && botStep === -1)) {
     return (
-      <div 
-        className="h-full w-full bg-[#f4f5f7] flex items-start sm:items-center justify-center p-0 sm:py-6 overflow-y-auto"
-        style={androidStyle}
-      >
+      <div className="h-full w-full bg-[#f4f5f7] flex items-start sm:items-center justify-center p-0 sm:py-6 overflow-y-auto">
         {/* Clean, authentic mobile or full-size desktop portal container */}
         <div 
           className="w-full sm:w-[1170px] sm:max-w-[1170px] min-h-full sm:min-h-0 sm:max-h-[calc(100vh-3rem)] bg-[#f9fafc] text-slate-800 font-sans flex flex-col justify-start overflow-y-auto relative sm:rounded-[2.5rem] sm:shadow-[0_30px_70px_rgba(0,0,0,0.18)] antialiased scroll-smooth my-auto"
@@ -3517,10 +3492,7 @@ Description: ${formDesc}`;
   }
 
   return (
-    <div 
-      className="relative h-full w-full bg-[#F4F6FA] text-slate-800 font-sans flex flex-col overflow-hidden antialiased"
-      style={androidStyle}
-    >
+    <div className="relative h-full w-full bg-[#F4F6FA] text-slate-800 font-sans flex flex-col overflow-hidden antialiased">
       
       {/* 2. Top Navigation Bar (HSBC Brand Header) */}
       <header 
