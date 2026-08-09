@@ -781,18 +781,8 @@ export default function LiveChat({ onBackToHome, sessionId: propSessionId }: Liv
     sessionRef.current = session;
   }, [session]);
 
-  // Fetch agents exactly once when session becomes active to show assigned agent details
+  // Fetch agents unconditionally on mount or when agentId changes to ensure a fully populated local agents list
   useEffect(() => {
-    const isPreChatOrHomepage = !session || session.id === 'draft' || (session.status === 'bot' && (botStep === -1 || (botStep >= 0 && botStep <= 3)));
-    if (isPreChatOrHomepage) {
-      return;
-    }
-
-    // Do not fetch agents if there is no assigned human agent yet (waiting state)
-    if (!session.agentId) {
-      return;
-    }
-
     const fetchAgents = async () => {
       try {
         let data: Agent[];
@@ -816,7 +806,7 @@ export default function LiveChat({ onBackToHome, sessionId: propSessionId }: Liv
     };
 
     fetchAgents();
-  }, [session?.id, botStep, session?.agentId]);
+  }, [session?.agentId]);
 
   const isInitializingChatRef = useRef(false);
   const lastSessionIdRef = useRef<string | undefined>(undefined);
@@ -1182,7 +1172,7 @@ Description: ${formDesc.trim() || 'None Provided'}`;
           ws?.send(JSON.stringify({
             type: 'register',
             role: 'customer',
-            chatId: session.id
+            chatId: sessionRef.current?.id || session.id
           }));
         } catch (e) {
           console.warn('[WebSocket Customer] Failed to send registration:', e);
@@ -1195,7 +1185,9 @@ Description: ${formDesc.trim() || 'None Provided'}`;
           const data = JSON.parse(event.data);
           console.log('[WebSocket Customer] Received message:', data);
 
-          if (data.type === 'session:update' && data.session && data.session.id === session.id) {
+          const currentSessionId = sessionRef.current?.id || session.id;
+
+          if (data.type === 'session:update' && data.session && data.session.id === currentSessionId) {
             setSession((prev) => {
               if (!prev) return data.session;
               if (data.session.isDeleted || data.session.isClosed) {
@@ -1219,7 +1211,7 @@ Description: ${formDesc.trim() || 'None Provided'}`;
             if (data.session.status === 'pending' || data.session.status === 'active' || data.session.status === 'resolved') {
               setBotStep(4);
             }
-          } else if (data.type === 'session:deleted' && data.chatId === session.id) {
+          } else if (data.type === 'session:deleted' && data.chatId === currentSessionId) {
             setSession((prev) => {
               if (!prev) return null;
               return {
@@ -1229,7 +1221,7 @@ Description: ${formDesc.trim() || 'None Provided'}`;
                 status: 'resolved'
               };
             });
-          } else if (data.type === 'presence:update' && data.chatId === session.id) {
+          } else if (data.type === 'presence:update' && data.chatId === currentSessionId) {
             if (data.agentId) {
               setAgents((prev) => {
                 const exists = prev.some(a => a.id === data.agentId);
@@ -1244,21 +1236,14 @@ Description: ${formDesc.trim() || 'None Provided'}`;
                     }
                     return a;
                   });
-                } else {
+                } else if (data.agent) {
                   return [...prev, {
-                    id: data.agentId,
-                    name: 'Carmen Lee',
-                    initials: 'CL',
-                    region: 'Hong Kong HQ',
-                    activeTime: data.agentActiveTime,
-                    description: 'Customer Support Specialist',
+                    ...data.agent,
                     status: data.agentStatus,
-                    avatar: 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=150&h=150&fit=crop&crop=face',
-                    department: 'Customer Operations',
-                    email: 'carmen@payme.hk',
-                    currentChatCount: 0
+                    activeTime: data.agentActiveTime
                   }];
                 }
+                return prev;
               });
             }
           }
@@ -3050,16 +3035,28 @@ Description: ${formDesc}`;
     };
   } else {
     // Active or Resolved human agent
-    const realAgent = matchedAgent || agents.find(a => a.id === 'carmen-lee') || agents[0];
-    assignedAgent = {
-      id: realAgent?.id || 'carmen-lee',
-      name: realAgent?.name || 'Carmen Lee',
-      avatar: realAgent?.avatar || 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=150&h=150&fit=crop&crop=face',
-      status: (realAgent?.status || 'online') as 'online' | 'offline' | 'idle' | 'busy' | 'away',
-      activeTime: realAgent?.activeTime || 'Active now',
-      department: realAgent?.department || 'Customer Support Specialist',
-      verified: true
-    };
+    const realAgent = matchedAgent;
+    if (realAgent) {
+      assignedAgent = {
+        id: realAgent.id,
+        name: realAgent.name,
+        avatar: realAgent.avatar,
+        status: (realAgent.status || 'online') as 'online' | 'offline' | 'idle' | 'busy' | 'away',
+        activeTime: realAgent.activeTime || 'Active now',
+        department: realAgent.department || 'Customer Support Specialist',
+        verified: true
+      };
+    } else {
+      assignedAgent = {
+        id: 'connecting-agent',
+        name: customerLanguage === 'hk' ? '正在連接專員...' : 'Connecting to Specialist...',
+        avatar: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150&h=150&fit=crop',
+        status: 'idle' as const,
+        activeTime: customerLanguage === 'hk' ? '請稍候...' : 'Please wait...',
+        department: customerLanguage === 'hk' ? '滙豐支援專員' : 'HSBC Support Specialist',
+        verified: false
+      };
+    }
   }
 
   if (!session || (session.status === 'bot' && botStep === -1)) {
@@ -4649,7 +4646,7 @@ Description: ${formDesc}`;
                       <h5 className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">{t('caseMetadata')}</h5>
                       <div className="space-y-1.5 text-slate-700 leading-normal">
                         <p>{customerLanguage === 'hk' ? '個案編號' : 'ID'}: <span className="font-mono text-slate-900 font-semibold">{session.caseId}</span></p>
-                        <p>{customerLanguage === 'hk' ? '經辦專員' : 'Agent'}: <span className="text-slate-900 font-semibold">{assignedAgent ? (customerLanguage === 'hk' ? (assignedAgent.name === 'Carmen Lee' ? '李嘉敏' : assignedAgent.name) : assignedAgent.name) : (customerLanguage === 'hk' ? '李嘉敏' : 'Carmen Lee')}</span></p>
+                        <p>{customerLanguage === 'hk' ? '經辦專員' : 'Agent'}: <span className="text-slate-900 font-semibold">{assignedAgent ? (customerLanguage === 'hk' ? (assignedAgent.name === 'Carmen Lee' ? '李嘉敏' : assignedAgent.name) : assignedAgent.name) : (customerLanguage === 'hk' ? '未指定' : 'Unassigned')}</span></p>
                         <p>{customerLanguage === 'hk' ? '部門' : 'Department'}: <span className="text-slate-900 font-semibold">
                           {assignedAgent ? (
                             customerLanguage === 'hk' ? (
@@ -4660,7 +4657,7 @@ Description: ${formDesc}`;
                               assignedAgent.department === 'VIP Relations' ? '貴賓客戶關係部' :
                               assignedAgent.department
                             ) : assignedAgent.department
-                          ) : (customerLanguage === 'hk' ? '客戶運營部' : 'Customer Operations')}
+                          ) : (customerLanguage === 'hk' ? '未指定' : 'Unassigned')}
                         </span></p>
                       </div>
                     </div>

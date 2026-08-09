@@ -1351,6 +1351,8 @@ function broadcastPresenceUpdate(chatId: string) {
     }
   }
 
+  const agent = session.agentId ? HK_AGENTS.find(a => a.id === session.agentId) : null;
+
   const event = {
     type: 'presence:update',
     chatId: session.id,
@@ -1359,7 +1361,17 @@ function broadcastPresenceUpdate(chatId: string) {
     agentId: session.agentId || null,
     agentOnline,
     agentStatus,
-    agentActiveTime
+    agentActiveTime,
+    agent: agent ? {
+      id: agent.id,
+      name: agent.name,
+      initials: agent.initials,
+      region: agent.region,
+      description: agent.description,
+      avatar: agent.avatar,
+      department: agent.department,
+      email: (agent as any).email || `${agent.id}@payme.hk`
+    } : null
   };
 
   const payload = JSON.stringify(event);
@@ -1378,23 +1390,32 @@ function broadcastPresenceUpdate(chatId: string) {
 }
 
 function broadcastSessionUpdate(session: ChatSession) {
+  console.log('[WS Broadcast] session:update for session:', session.id, 'status:', session.status);
   const event = {
     type: 'session:update',
     session
   };
   const payload = JSON.stringify(event);
 
+  let sentToCustomer = 0;
+  let sentToAdmin = 0;
   for (const conn of activeConnections) {
+    console.log('[WS Broadcast] activeConn: role=' + conn.role + ', chatId=' + conn.chatId + ', agentId=' + conn.agentId + ', ws.readyState=' + conn.ws?.readyState);
     if (conn.role === 'customer' && conn.chatId === session.id) {
       if (conn.ws.readyState === WebSocket.OPEN) {
         conn.ws.send(payload);
+        sentToCustomer++;
+      } else {
+        console.warn('[WS Broadcast] Customer connection exists but ws.readyState is:', conn.ws?.readyState);
       }
     } else if (conn.role === 'admin') {
       if (conn.ws.readyState === WebSocket.OPEN) {
         conn.ws.send(payload);
+        sentToAdmin++;
       }
     }
   }
+  console.log('[WS Broadcast] sentToCustomer:', sentToCustomer, 'sentToAdmin:', sentToAdmin);
 }
 
 function broadcastSessionDeletion(chatId: string) {
