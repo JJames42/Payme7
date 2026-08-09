@@ -1166,13 +1166,15 @@ Description: ${formDesc.trim() || 'None Provided'}`;
           } catch (e) {}
           return;
         }
-        console.log('[WebSocket Customer] Connected');
+        const regChatId = sessionRef.current?.id || session.id;
+        console.log('[DEBUG CLIENT] WebSocket connected');
         setConnectionStatus('Connected');
         try {
+          console.log('[DEBUG CLIENT] WebSocket registered for chatId:', regChatId);
           ws?.send(JSON.stringify({
             type: 'register',
             role: 'customer',
-            chatId: sessionRef.current?.id || session.id
+            chatId: regChatId
           }));
         } catch (e) {
           console.warn('[WebSocket Customer] Failed to send registration:', e);
@@ -1183,11 +1185,24 @@ Description: ${formDesc.trim() || 'None Provided'}`;
         if (!isMounted) return;
         try {
           const data = JSON.parse(event.data);
-          console.log('[WebSocket Customer] Received message:', data);
-
+          
           const currentSessionId = sessionRef.current?.id || session.id;
+          const incomingChatId = data.chatId || data.session?.id;
+          const incomingAgentId = data.agentId || data.session?.agentId;
+          const incomingAgentName = data.agent?.name || (data.session?.agentId ? 'Has Agent ID' : 'None');
+
+          console.log('[DEBUG CLIENT] incoming event:', {
+            type: data.type,
+            chatId: incomingChatId,
+            agentId: incomingAgentId,
+            agentName: incomingAgentName
+          });
+
+          const passesCheck = (incomingChatId === currentSessionId);
+          console.log('[DEBUG CLIENT] Event passes chatId check?', passesCheck, '(incoming:', incomingChatId, 'vs current:', currentSessionId, ')');
 
           if (data.type === 'session:update' && data.session && data.session.id === currentSessionId) {
+            console.log('[DEBUG CLIENT] session:update matched current session. Updating React session state...');
             setSession((prev) => {
               if (!prev) return data.session;
               if (data.session.isDeleted || data.session.isClosed) {
@@ -1208,10 +1223,12 @@ Description: ${formDesc.trim() || 'None Provided'}`;
               }
               return data.session;
             });
+            console.log('[DEBUG CLIENT] React session state update scheduled.');
             if (data.session.status === 'pending' || data.session.status === 'active' || data.session.status === 'resolved') {
               setBotStep(4);
             }
           } else if (data.type === 'session:deleted' && data.chatId === currentSessionId) {
+            console.log('[DEBUG CLIENT] session:deleted matched current session. Updating React session state...');
             setSession((prev) => {
               if (!prev) return null;
               return {
@@ -1221,11 +1238,14 @@ Description: ${formDesc.trim() || 'None Provided'}`;
                 status: 'resolved'
               };
             });
+            console.log('[DEBUG CLIENT] React session deletion scheduled.');
           } else if (data.type === 'presence:update' && data.chatId === currentSessionId) {
+            console.log('[DEBUG CLIENT] presence:update matched current session. AgentId:', data.agentId, 'agent details included:', !!data.agent);
             if (data.agentId) {
               setAgents((prev) => {
                 const exists = prev.some(a => a.id === data.agentId);
                 if (exists) {
+                  console.log('[DEBUG CLIENT] Agent', data.agentId, 'already exists in local state. Updating status/activeTime...');
                   return prev.map(a => {
                     if (a.id === data.agentId) {
                       return {
@@ -1237,6 +1257,7 @@ Description: ${formDesc.trim() || 'None Provided'}`;
                     return a;
                   });
                 } else if (data.agent) {
+                  console.log('[DEBUG CLIENT] Adding new agent to local state:', data.agent);
                   return [...prev, {
                     ...data.agent,
                     status: data.agentStatus,
@@ -1245,6 +1266,7 @@ Description: ${formDesc.trim() || 'None Provided'}`;
                 }
                 return prev;
               });
+              console.log('[DEBUG CLIENT] React agents state update scheduled.');
             }
           }
         } catch (err) {

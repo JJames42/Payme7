@@ -1374,19 +1374,28 @@ function broadcastPresenceUpdate(chatId: string) {
     } : null
   };
 
+  console.log('[DEBUG SERVER] Broadcasting presence:update. payload type:', event.type, 'chatId:', event.chatId, 'agentId:', event.agentId, 'agentName:', agent?.name || 'None');
+
   const payload = JSON.stringify(event);
 
+  let presSentToCustomer = 0;
+  let presSentToAdmin = 0;
   for (const conn of activeConnections) {
     if (conn.role === 'customer' && conn.chatId === session.id) {
       if (conn.ws.readyState === WebSocket.OPEN) {
         conn.ws.send(payload);
+        presSentToCustomer++;
+      } else {
+        console.log(`[DEBUG SERVER]   Presence customer client for ${session.id} not open, readyState: ${conn.ws.readyState}`);
       }
     } else if (conn.role === 'admin') {
       if (conn.ws.readyState === WebSocket.OPEN) {
         conn.ws.send(payload);
+        presSentToAdmin++;
       }
     }
   }
+  console.log(`[DEBUG SERVER] Presence update broadcast completed. Sent to ${presSentToCustomer} customer clients, ${presSentToAdmin} admin clients.`);
 }
 
 function broadcastSessionUpdate(session: ChatSession) {
@@ -1395,6 +1404,8 @@ function broadcastSessionUpdate(session: ChatSession) {
     type: 'session:update',
     session
   };
+  console.log('[DEBUG SERVER] Broadcasting session:update. payload type:', event.type, 'chatId:', session.id, 'agentId:', session.agentId, 'status:', session.status);
+  
   const payload = JSON.stringify(event);
 
   let sentToCustomer = 0;
@@ -1415,7 +1426,7 @@ function broadcastSessionUpdate(session: ChatSession) {
       }
     }
   }
-  console.log('[WS Broadcast] sentToCustomer:', sentToCustomer, 'sentToAdmin:', sentToAdmin);
+  console.log('[DEBUG SERVER] Session update broadcast completed. Sent to', sentToCustomer, 'customer clients,', sentToAdmin, 'admin clients.');
 }
 
 function broadcastSessionDeletion(chatId: string) {
@@ -4465,8 +4476,11 @@ app.post('/api/chats/:id/accept', adminActionRateLimiter, requireAdminAuth, (req
   const { id } = req.params;
   const { agentId } = req.body;
 
+  console.log('[DEBUG SERVER] accept endpoint called for chatId:', id, 'with agentId:', agentId);
+
   const session = chatSessions.find(s => s.id === id);
   if (!session) {
+    console.log('[DEBUG SERVER] Chat session not found for id:', id);
     return res.status(404).json({ error: 'Chat session not found' });
   }
 
@@ -4483,8 +4497,11 @@ app.post('/api/chats/:id/accept', adminActionRateLimiter, requireAdminAuth, (req
 
   const agent = HK_AGENTS.find(a => a.id === agentId);
   if (!agent) {
+    console.log('[DEBUG SERVER] Agent not found for agentId:', agentId);
     return res.status(404).json({ error: 'Agent not found' });
   }
+
+  console.log('[DEBUG SERVER] Session accept processing: chatId:', id, 'Assigned Agent ID:', agentId, 'Name:', agent.name);
 
   session.status = 'active';
   session.agentId = agentId;
@@ -4517,6 +4534,13 @@ app.post('/api/chats/:id/accept', adminActionRateLimiter, requireAdminAuth, (req
   });
 
   saveSessionsToDisk();
+
+  // Find clients connected for this specific chat
+  const connectedCustomerWS = Array.from(activeConnections).filter(conn => conn.role === 'customer' && conn.chatId === id);
+  console.log('[DEBUG SERVER] WebSocket clients currently connected for chat', id, 'customer clients count:', connectedCustomerWS.length);
+  connectedCustomerWS.forEach((conn, index) => {
+    console.log(`[DEBUG SERVER]   Client #${index}: readyState=${conn.ws.readyState}, role=${conn.role}, chatId=${conn.chatId}`);
+  });
 
   broadcastSessionUpdate(session);
   broadcastPresenceUpdate(session.id);
