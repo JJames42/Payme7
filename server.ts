@@ -1397,6 +1397,22 @@ function broadcastSessionUpdate(session: ChatSession) {
   }
 }
 
+function broadcastSessionDeletion(chatId: string) {
+  const event = {
+    type: 'session:deleted',
+    chatId: chatId
+  };
+  const payload = JSON.stringify(event);
+
+  for (const conn of activeConnections) {
+    if (conn.role === 'customer' && conn.chatId === chatId) {
+      if (conn.ws.readyState === WebSocket.OPEN) {
+        conn.ws.send(payload);
+      }
+    }
+  }
+}
+
 function initWebSocketServer(server: any) {
   const wss = new WebSocketServer({ noServer: true });
 
@@ -4481,6 +4497,9 @@ app.post('/api/chats/:id/accept', adminActionRateLimiter, requireAdminAuth, (req
 
   saveSessionsToDisk();
 
+  broadcastSessionUpdate(session);
+  broadcastPresenceUpdate(session.id);
+
   res.json(session);
 });
 
@@ -4560,9 +4579,11 @@ app.delete('/api/chats/:id', adminActionRateLimiter, requireAdminAuth, (req, res
     session.isDeleted = true;
     session.status = 'resolved';
     deletedChatIds.add(id);
+    broadcastSessionDeletion(id);
     chatSessions.splice(sessionIndex, 1);
   } else {
     deletedChatIds.add(id);
+    broadcastSessionDeletion(id);
   }
 
   res.json({ success: true, id });
@@ -4771,6 +4792,11 @@ app.post('/api/chats/:id/transfer', adminActionRateLimiter, requireAdminAuth, (r
     text: `System: Conversation transferred from ${HK_AGENTS.find(a => a.id === oldAgentId)?.name || 'Previous Agent'} to ${newAgent.name} (${newAgent.department}).`,
     timestamp: new Date().toISOString()
   });
+
+  saveSessionsToDisk();
+
+  broadcastSessionUpdate(session);
+  broadcastPresenceUpdate(session.id);
 
   res.json(session);
 });

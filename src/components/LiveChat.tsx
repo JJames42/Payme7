@@ -1198,6 +1198,14 @@ Description: ${formDesc.trim() || 'None Provided'}`;
           if (data.type === 'session:update' && data.session && data.session.id === session.id) {
             setSession((prev) => {
               if (!prev) return data.session;
+              if (data.session.isDeleted || data.session.isClosed) {
+                return {
+                  ...data.session,
+                  isDeleted: true,
+                  isClosed: true,
+                  status: 'resolved'
+                };
+              }
               const serverMsgIds = new Set(data.session.messages.map((m: any) => m.id));
               const pendingOptimistic = prev.messages.filter(m => !serverMsgIds.has(m.id) && m.sender === 'customer');
               if (pendingOptimistic.length > 0) {
@@ -1208,9 +1216,19 @@ Description: ${formDesc.trim() || 'None Provided'}`;
               }
               return data.session;
             });
-            if (data.session.status === 'pending') {
+            if (data.session.status === 'pending' || data.session.status === 'active' || data.session.status === 'resolved') {
               setBotStep(4);
             }
+          } else if (data.type === 'session:deleted' && data.chatId === session.id) {
+            setSession((prev) => {
+              if (!prev) return null;
+              return {
+                ...prev,
+                isDeleted: true,
+                isClosed: true,
+                status: 'resolved'
+              };
+            });
           } else if (data.type === 'presence:update' && data.chatId === session.id) {
             if (data.agentId) {
               setAgents((prev) => {
